@@ -22,7 +22,11 @@ from yt_live_archiver.database import Database
 from yt_live_archiver.logging_config import get_logger
 from yt_live_archiver.models import Recording, RecordingStatus
 from yt_live_archiver.state_machine import state_machine
-from yt_live_archiver.utils import exponential_backoff_delays
+from yt_live_archiver.utils import (
+    exponential_backoff_delays,
+    format_bytes,
+    format_duration,
+)
 
 logger = get_logger(__name__)
 
@@ -34,10 +38,62 @@ def build_webhook_payload(recording: Recording) -> dict:
     """Build the structured webhook JSON payload from a recording.
 
     Never includes credentials or tokens.
+    Compatible with Discord, Slack, and generic webhook endpoints.
     """
     filename = Path(recording.local_path).name if recording.local_path else ""
+    channel = recording.channel_name or recording.channel_id or "YouTube"
+    title = recording.title or "Livestream"
+    yt_url = (
+        recording.youtube_url
+        or f"https://www.youtube.com/watch?v={recording.youtube_video_id}"
+    )
+    duration_str = format_duration(recording.duration_seconds or 0)
+    size_str = format_bytes(
+        recording.drive_size_bytes or recording.local_size_bytes or 0
+    )
+
+    # Discord Embed Fields
+    fields = [
+        {"name": "Channel", "value": channel, "inline": True},
+        {"name": "Duration", "value": duration_str, "inline": True},
+        {"name": "Size", "value": size_str, "inline": True},
+    ]
+
+    if recording.video_codec or recording.audio_codec:
+        codec_info = f"{recording.video_codec or 'video'} / {recording.audio_codec or 'audio'}"
+        if recording.height:
+            codec_info += f" ({recording.height}p)"
+        fields.append({"name": "Format", "value": codec_info, "inline": True})
+
+    if recording.drive_file_id:
+        drive_url = f"https://drive.google.com/file/d/{recording.drive_file_id}/view"
+        fields.append(
+            {
+                "name": "Google Drive",
+                "value": f"[Open in Google Drive]({drive_url})",
+                "inline": False,
+            }
+        )
+
+    embed: dict = {
+        "title": title,
+        "url": yt_url,
+        "color": 0xFF0000,  # YouTube Red
+        "fields": fields,
+        "footer": {
+            "text": "yt-live-archiver",
+        },
+    }
+    if recording.ended_at:
+        embed["timestamp"] = recording.ended_at
+
+    content_text = f"🔴 **YouTube Stream Archived**: [{title}]({yt_url})"
+    plain_text = f"🔴 YouTube Stream Archived: {title} ({yt_url})"
 
     payload = {
+        "content": content_text,
+        "embeds": [embed],
+        "text": plain_text,
         "event": "youtube_live_recorded",
         "youtube": {
             "video_id": recording.youtube_video_id,

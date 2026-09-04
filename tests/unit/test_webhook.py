@@ -84,6 +84,17 @@ class TestBuildWebhookPayload:
         payload = build_webhook_payload(r)
         assert "nasa_2026-09-04_abc123" in payload["file"]["name"]
 
+    def test_discord_and_slack_fields(self):
+        r = make_recording()
+        payload = build_webhook_payload(r)
+        assert "content" in payload and payload["content"]
+        assert "embeds" in payload and len(payload["embeds"]) == 1
+        assert payload["embeds"][0]["title"] == "NASA Live Stream"
+        assert "text" in payload and payload["text"]
+        # Check Drive link is in fields
+        drive_field = next(f for f in payload["embeds"][0]["fields"] if f["name"] == "Google Drive")
+        assert "drive_file_xyz" in drive_field["value"]
+
 
 class TestWebhookClient:
     def test_success_on_200(self):
