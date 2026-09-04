@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "yt-live-archiver"
-version = "1.0.0"
+version = "1.0.1"
 description = "Automated YouTube livestream archiver with Google Drive upload and webhook notifications"
 readme = "README.md"
 license = { file = "LICENSE" }

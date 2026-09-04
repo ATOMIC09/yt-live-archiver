@@ -8,12 +8,8 @@ Persists attempt count in the database for idempotency.
 
 from __future__ import annotations
 
-import json
-import logging
 import time
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 import httpx
 
@@ -52,34 +48,62 @@ def build_webhook_payload(recording: Recording) -> dict:
         recording.drive_size_bytes or recording.local_size_bytes or 0
     )
 
-    # Discord Embed Fields
+    # Format timestamps cleanly
+    started_str = recording.started_at or recording.detected_at or "N/A"
+    ended_str = recording.ended_at or "N/A"
+    if started_str != "N/A":
+        started_str = started_str.replace("T", " ").replace("Z", " UTC")
+    if ended_str != "N/A":
+        ended_str = ended_str.replace("T", " ").replace("Z", " UTC")
+
+    # Discord Embed Fields (all values inside code backticks)
     fields = [
-        {"name": "Channel", "value": channel, "inline": True},
-        {"name": "Duration", "value": duration_str, "inline": True},
-        {"name": "Size", "value": size_str, "inline": True},
+        {"name": "Channel", "value": f"`{channel}`", "inline": True},
+        {"name": "Duration", "value": f"`{duration_str}`", "inline": True},
+        {"name": "File Size", "value": f"`{size_str}`", "inline": True},
     ]
 
+    if recording.width and recording.height:
+        fps_info = f" @ {recording.fps:.0f}fps" if recording.fps else ""
+        fields.append(
+            {
+                "name": "Resolution",
+                "value": f"`{recording.width}x{recording.height}{fps_info}`",
+                "inline": True,
+            }
+        )
+
     if recording.video_codec or recording.audio_codec:
-        codec_info = f"{recording.video_codec or 'video'} / {recording.audio_codec or 'audio'}"
-        if recording.height:
-            codec_info += f" ({recording.height}p)"
-        fields.append({"name": "Format", "value": codec_info, "inline": True})
+        codec_info = (
+            f"{recording.video_codec or 'video'} / {recording.audio_codec or 'audio'}"
+        )
+        fields.append({"name": "Codecs", "value": f"`{codec_info}`", "inline": True})
+
+    fields.append({"name": "Started At", "value": f"`{started_str}`", "inline": True})
+    if recording.ended_at:
+        fields.append({"name": "Ended At", "value": f"`{ended_str}`", "inline": True})
 
     if recording.drive_file_id:
         drive_url = f"https://drive.google.com/file/d/{recording.drive_file_id}/view"
         fields.append(
             {
                 "name": "Google Drive",
-                "value": f"[Open in Google Drive]({drive_url})",
+                "value": f"[`Open in Google Drive`]({drive_url})",
                 "inline": False,
             }
         )
+
+    # High-resolution thumbnail image preview
+    thumbnail_url = f"https://i.ytimg.com/vi/{recording.youtube_video_id}/hqdefault.jpg"
 
     embed: dict = {
         "title": title,
         "url": yt_url,
         "color": 0xFF0000,  # YouTube Red
         "fields": fields,
+        "image": {
+            "url": thumbnail_url,
+        },
         "footer": {
             "text": "yt-live-archiver",
         },
@@ -87,13 +111,12 @@ def build_webhook_payload(recording: Recording) -> dict:
     if recording.ended_at:
         embed["timestamp"] = recording.ended_at
 
-    content_text = f"🔴 **YouTube Stream Archived**: [{title}]({yt_url})"
     plain_text = f"🔴 YouTube Stream Archived: {title} ({yt_url})"
 
     payload = {
-        "content": content_text,
+        # Omit 'content' so Discord displays only the clean embed card
         "embeds": [embed],
-        "text": plain_text,
+        "text": plain_text,  # Slack compatibility
         "event": "youtube_live_recorded",
         "youtube": {
             "video_id": recording.youtube_video_id,
@@ -193,7 +216,10 @@ class WebhookClient:
                     self.config.webhook.url,
                     json=payload,
                     timeout=self.config.webhook.timeout_seconds,
-                    headers={"Content-Type": "application/json", "User-Agent": "yt-live-archiver/1.0"},
+                    headers={
+                        "Content-Type": "application/json",
+                        "User-Agent": "yt-live-archiver/1.0.1",
+                    },
                 )
 
                 if response.status_code in {200, 201, 202, 204}:

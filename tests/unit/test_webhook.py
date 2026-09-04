@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from yt_live_archiver.models import Recording, RecordingStatus
 from yt_live_archiver.webhook import WebhookClient, build_webhook_payload
 
@@ -87,20 +85,31 @@ class TestBuildWebhookPayload:
     def test_discord_and_slack_fields(self):
         r = make_recording()
         payload = build_webhook_payload(r)
-        assert "content" in payload and payload["content"]
+        # Discord: embed-only, content text omitted
+        assert "content" not in payload
         assert "embeds" in payload and len(payload["embeds"]) == 1
-        assert payload["embeds"][0]["title"] == "NASA Live Stream"
+        embed = payload["embeds"][0]
+        assert embed["title"] == "NASA Live Stream"
+        # Discord thumbnail image
+        assert embed["image"]["url"] == "https://i.ytimg.com/vi/abc123/hqdefault.jpg"
+        # Slack text fallback
         assert "text" in payload and payload["text"]
+        # Field values are formatted in backticks
+        channel_field = next(f for f in embed["fields"] if f["name"] == "Channel")
+        assert channel_field["value"] == "`NASA`"
+        duration_field = next(f for f in embed["fields"] if f["name"] == "Duration")
+        assert duration_field["value"] == "`02:00:00`"
         # Check Drive link is in fields
-        drive_field = next(f for f in payload["embeds"][0]["fields"] if f["name"] == "Google Drive")
+        drive_field = next(f for f in embed["fields"] if f["name"] == "Google Drive")
         assert "drive_file_xyz" in drive_field["value"]
+        assert "[`Open in Google Drive`]" in drive_field["value"]
 
 
 class TestWebhookClient:
     def test_success_on_200(self):
         r = make_recording()
         config = make_config()
-        db = make_db = MagicMock()
+        db = MagicMock()
 
         with patch("yt_live_archiver.webhook.httpx.post") as mock_post:
             mock_response = MagicMock()

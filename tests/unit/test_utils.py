@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from yt_live_archiver.utils import (
     build_archive_filename,
     exponential_backoff_delays,
@@ -91,6 +89,16 @@ class TestBuildArchiveFilename:
             date_str="2026-09-04",
             video_id="abc123",
             title="NASA Live",
+        )
+        assert name == "NASA Live.mkv"
+
+    def test_with_metadata(self):
+        name = build_archive_filename(
+            channel_id="nasa",
+            date_str="2026-09-04",
+            video_id="abc123",
+            title="NASA Live",
+            include_metadata=True,
         )
         assert name == "nasa_2026-09-04_abc123_NASA Live.mkv"
 

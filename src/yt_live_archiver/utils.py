@@ -69,18 +69,33 @@ def sanitize_filename(raw: str) -> str:
     return name
 
 
-def build_archive_filename(channel_id: str, date_str: str, video_id: str, title: str, ext: str = "mkv") -> str:
-    """Build the canonical archive filename.
+def build_archive_filename(
+    channel_id: str = "",
+    date_str: str = "",
+    video_id: str = "",
+    title: str = "",
+    ext: str = "mkv",
+    include_metadata: bool = False,
+) -> str:
+    """Build the clean archive filename using only the stream title.
 
-    Format: {channel_id}_{date}_{video_id}_{title}.{ext}
-    Example: nasa_2026-09-04_abc123_NASA_Live.mkv
+    Format: {title}.{ext}
+    Example: Live Video from the International Space Station.mkv
     """
-    safe_title = sanitize_filename(title)
-    # Truncate title part to keep total filename reasonable
-    max_title = MAX_FILENAME_LENGTH - len(channel_id) - len(date_str) - len(video_id) - 3  # 3 underscores
+    safe_title = sanitize_filename(title) if title else "Livestream"
+    if not safe_title or safe_title == "unnamed":
+        safe_title = "Livestream"
+
+    if include_metadata and (channel_id or date_str or video_id):
+        max_title = MAX_FILENAME_LENGTH - len(channel_id) - len(date_str) - len(video_id) - 3
+        if len(safe_title) > max_title:
+            safe_title = safe_title[:max_title]
+        return f"{channel_id}_{date_str}_{video_id}_{safe_title}.{ext}"
+
+    max_title = MAX_FILENAME_LENGTH - len(ext) - 1
     if len(safe_title) > max_title:
         safe_title = safe_title[:max_title]
-    return f"{channel_id}_{date_str}_{video_id}_{safe_title}.{ext}"
+    return f"{safe_title}.{ext}"
 
 
 # ---------------------------------------------------------------------------

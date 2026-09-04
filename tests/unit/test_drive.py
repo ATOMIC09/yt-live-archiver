@@ -121,3 +121,70 @@ def test_upload_file_empty_folder_id(tmp_path: Path):
     # Verify create was called without "parents"
     called_body = mock_service.files().create.call_args[1]["body"]
     assert "parents" not in called_body
+
+
+def test_get_or_create_subfolder_existing(drive_config: GoogleDriveConfig):
+    client = DriveClient(drive_config)
+    mock_service = MagicMock()
+    mock_list_req = MagicMock()
+    mock_list_req.execute.return_value = {"files": [{"id": "subfolder_789", "name": "NASA"}]}
+    mock_service.files().list.return_value = mock_list_req
+    client._service = mock_service
+
+    folder_id = client.get_or_create_subfolder("parent_123", "NASA")
+    assert folder_id == "subfolder_789"
+    assert ("parent_123", "NASA") in client._folder_cache
+
+    # Subsequent call uses cache (list not called again)
+    mock_service.files().list.reset_mock()
+    folder_id_cached = client.get_or_create_subfolder("parent_123", "NASA")
+    assert folder_id_cached == "subfolder_789"
+    mock_service.files().list.assert_not_called()
+
+
+def test_get_or_create_subfolder_creates_new(drive_config: GoogleDriveConfig):
+    client = DriveClient(drive_config)
+    mock_service = MagicMock()
+    # First search returns empty list
+    mock_list_req = MagicMock()
+    mock_list_req.execute.return_value = {"files": []}
+    mock_service.files().list.return_value = mock_list_req
+
+    # Create returns new folder id
+    mock_create_req = MagicMock()
+    mock_create_req.execute.return_value = {"id": "new_folder_999"}
+    mock_service.files().create.return_value = mock_create_req
+    client._service = mock_service
+
+    folder_id = client.get_or_create_subfolder("parent_123", "SpaceX")
+    assert folder_id == "new_folder_999"
+    mock_service.files().create.assert_called_once()
+    create_body = mock_service.files().create.call_args[1]["body"]
+    assert create_body["name"] == "SpaceX"
+    assert create_body["parents"] == ["parent_123"]
+
+
+def test_upload_file_with_subfolder(drive_config: GoogleDriveConfig, tmp_path: Path):
+    video = tmp_path / "video.mkv"
+    video.write_bytes(b"dummy video data")
+
+    client = DriveClient(drive_config)
+    mock_service = MagicMock()
+    # Mock subfolder resolution to return cached or found subfolder
+    mock_list_req = MagicMock()
+    mock_list_req.execute.return_value = {"files": [{"id": "channel_folder_555", "name": "NASA"}]}
+    mock_service.files().list.return_value = mock_list_req
+
+    mock_request = MagicMock()
+    mock_request.next_chunk.return_value = (None, {"id": "drive777", "size": "16"})
+    mock_service.files().create.return_value = mock_request
+    client._service = mock_service
+
+    result = client.upload_file(video, "video.mkv", subfolder_name="NASA")
+    assert result.file_id == "drive777"
+    assert result.folder_id == "channel_folder_555"
+
+    # Verify upload was created with subfolder parent
+    called_body = mock_service.files().create.call_args[1]["body"]
+    assert called_body["parents"] == ["channel_folder_555"]
+

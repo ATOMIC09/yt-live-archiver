@@ -130,10 +130,12 @@ class Uploader:
         # Perform the upload
         try:
             drive = self._get_drive_client()
+            subfolder = recording.channel_name or recording.channel_id
             remote_info = drive.upload_file(
                 local_path=local_path,
                 remote_name=remote_name,
                 video_id=recording.youtube_video_id,
+                subfolder_name=subfolder,
             )
         except DriveAuthError as exc:
             log.error("drive_auth_error", error=str(exc))
@@ -156,7 +158,7 @@ class Uploader:
 
         # Persist Drive file ID immediately (before verification)
         recording.drive_file_id = remote_info.file_id
-        recording.drive_folder_id = self.config.google_drive.folder_id
+        recording.drive_folder_id = remote_info.folder_id or self.config.google_drive.folder_id
         recording.drive_size_bytes = remote_info.size
         self.db.update_recording(recording)
 

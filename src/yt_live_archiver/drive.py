@@ -51,11 +51,19 @@ class DriveUploadError(DriveError):
 class RemoteFileInfo:
     """Minimal metadata about a file in Drive."""
 
-    def __init__(self, file_id: str, name: str, size: int, md5: str = "") -> None:
+    def __init__(
+        self,
+        file_id: str,
+        name: str,
+        size: int,
+        md5: str = "",
+        folder_id: str = "",
+    ) -> None:
         self.file_id = file_id
         self.name = name
         self.size = size
         self.md5 = md5
+        self.folder_id = folder_id
 
 
 class DriveClient:
@@ -65,6 +73,7 @@ class DriveClient:
         self.config = config
         self._service = None
         self._log = get_logger(__name__)
+        self._folder_cache: dict[tuple[str, str], str] = {}
 
     def _get_service(self):
         """Lazily build and cache the Drive service."""
@@ -100,12 +109,75 @@ class DriveClient:
 
         return self._service
 
+    def get_or_create_subfolder(self, parent_id: str, folder_name: str) -> str:
+        """Find or create a subfolder with *folder_name* inside *parent_id*."""
+        if not folder_name:
+            return parent_id
+
+        cache_key = (parent_id, folder_name)
+        if cache_key in self._folder_cache:
+            return self._folder_cache[cache_key]
+
+        service = self._get_service()
+        escaped_name = folder_name.replace("'", "\\'")
+        query = (
+            f"mimeType = 'application/vnd.google-apps.folder' and "
+            f"name = '{escaped_name}' and "
+            f"trashed = false"
+        )
+        if parent_id:
+            query += f" and '{parent_id}' in parents"
+
+        try:
+            response = service.files().list(
+                q=query,
+                spaces="drive",
+                fields="files(id, name)",
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True,
+            ).execute()
+            files = response.get("files", [])
+            if files:
+                folder_id = files[0]["id"]
+                self._folder_cache[cache_key] = folder_id
+                return folder_id
+
+            # Folder does not exist — create it
+            metadata: dict = {
+                "name": folder_name,
+                "mimeType": "application/vnd.google-apps.folder",
+            }
+            if parent_id:
+                metadata["parents"] = [parent_id]
+
+            created = service.files().create(
+                body=metadata,
+                fields="id",
+                supportsAllDrives=True,
+            ).execute()
+            folder_id = created["id"]
+            self._log.info(
+                "drive_subfolder_created",
+                name=folder_name,
+                folder_id=folder_id,
+            )
+            self._folder_cache[cache_key] = folder_id
+            return folder_id
+        except Exception as exc:
+            self._log.warning(
+                "drive_subfolder_resolution_failed",
+                error=str(exc),
+                fallback_parent=parent_id,
+            )
+            return parent_id
+
     def upload_file(
         self,
         local_path: str | Path,
         remote_name: str,
         mime_type: str = "video/x-matroska",
         video_id: str = "",
+        subfolder_name: str = "",
     ) -> RemoteFileInfo:
         """Upload *local_path* to Google Drive with resumable transfer.
 
@@ -120,11 +192,18 @@ class DriveClient:
         chunk_bytes = self.config.chunk_size_mb * 1024 * 1024
         log = get_logger(__name__, video_id=video_id)
 
+        target_folder_id = self.config.folder_id
+        if subfolder_name and target_folder_id:
+            target_folder_id = self.get_or_create_subfolder(
+                target_folder_id, subfolder_name
+            )
+
         log.info(
             "drive_upload_starting",
             file=remote_name,
             size=local_size,
             chunks=self.config.chunk_size_mb,
+            folder_id=target_folder_id,
         )
 
         service = self._get_service()
@@ -132,8 +211,8 @@ class DriveClient:
         file_metadata: dict = {
             "name": remote_name,
         }
-        if self.config.folder_id:
-            file_metadata["parents"] = [self.config.folder_id]
+        if target_folder_id:
+            file_metadata["parents"] = [target_folder_id]
 
         media = MediaFileUpload(
             str(local_path),
@@ -212,6 +291,7 @@ class DriveClient:
             name=remote_name,
             size=remote_size,
             md5=md5,
+            folder_id=target_folder_id,
         )
 
     def get_file(self, file_id: str) -> Optional[RemoteFileInfo]:
