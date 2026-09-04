@@ -1,0 +1,54 @@
+# .dockerignore — Exclude files from Docker build context
+
+# Version control
+.git/
+.gitignore
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Development
+.venv/
+venv/
+env/
+.tox/
+
+# IDE
+.vscode/
+.idea/
+
+# Secrets (never copy into image)
+.env
+credentials/
+*.json
+
+# Data (never copy into image)
+data/
+*.db
+*.mkv
+*.mp4
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Tests (not needed in production image)
+tests/
+
+# CI/CD
+.github/
+
+# OS
+.DS_Store
+Thumbs.db
