@@ -6,7 +6,7 @@ The host machine only needs:
 
 - **Docker Engine** (20.10+)
 - **Docker Compose** (v2+)
-- Persistent storage (for `/srv/yt-live-archiver`)
+- Persistent storage (for `.`)
 - Network access to YouTube and Google
 
 ## Step-by-Step
@@ -21,20 +21,20 @@ cd yt-live-archiver
 ### 2. Create host directories
 
 ```bash
-sudo mkdir -p /srv/yt-live-archiver/{data,config,credentials}
-sudo chown -R $USER:$USER /srv/yt-live-archiver
+sudo mkdir -p ./{data,config,credentials}
+sudo chown -R $USER:$USER .
 ```
 
 ### 3. Copy example files
 
 ```bash
-cp config/config.example.yaml /srv/yt-live-archiver/config/config.yaml
+cp config/config.example.yaml ./config/config.yaml
 cp .env.example .env
 ```
 
 ### 4. Configure channels and services
 
-Edit `/srv/yt-live-archiver/config/config.yaml`:
+Edit `./config/config.yaml`:
 
 ```yaml
 channels:
@@ -51,8 +51,8 @@ Add your Google Drive folder ID and webhook URL. See:
 ### 5. Add Google credentials
 
 ```bash
-cp /path/to/service-account.json /srv/yt-live-archiver/credentials/google-credentials.json
-chmod 600 /srv/yt-live-archiver/credentials/google-credentials.json
+cp /path/to/service-account.json ./credentials/google-credentials.json
+chmod 600 ./credentials/google-credentials.json
 ```
 
 ### 6. Start the container
@@ -89,7 +89,7 @@ The database and all recording state are preserved across upgrades.
 docker compose down
 ```
 
-Your data in `/srv/yt-live-archiver/data/` is not deleted.
+Your data in `./data/` is not deleted.
 
 ## Optional: Setup Script
 

@@ -6,7 +6,7 @@
 
 set -euo pipefail
 
-INSTALL_DIR="${INSTALL_DIR:-/srv/yt-live-archiver}"
+INSTALL_DIR="${INSTALL_DIR:-.}"
 
 echo "=== yt-live-archiver setup ==="
 echo "Install directory: $INSTALL_DIR"

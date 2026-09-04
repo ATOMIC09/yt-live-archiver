@@ -5,8 +5,8 @@
 # Quick start:
 #   cp .env.example .env
 #   # Edit .env with your settings
-#   cp config/config.example.yaml /srv/yt-live-archiver/config/config.yaml
-#   # Add your Google credentials to /srv/yt-live-archiver/credentials/
+#   cp config/config.example.yaml ./config/config.yaml
+#   # Add your Google credentials to ./credentials/
 #   docker compose up -d
 #
 # Build locally (development):
@@ -22,9 +22,9 @@ services:
       - .env
 
     volumes:
-      - /srv/yt-live-archiver/data:/data
-      - /srv/yt-live-archiver/config:/config:ro
-      - /srv/yt-live-archiver/credentials:/credentials:ro
+      - ./data:/data
+      - ./config:/config:ro
+      - ./credentials:/credentials:ro
 
     environment:
       TZ: UTC
@@ -48,9 +48,9 @@ services:
     env_file:
       - .env
     volumes:
-      - /srv/yt-live-archiver/data:/data
-      - /srv/yt-live-archiver/config:/config:ro
-      - /srv/yt-live-archiver/credentials:/credentials:ro
+      - ./data:/data
+      - ./config:/config:ro
+      - ./credentials:/credentials:ro
     environment:
       TZ: UTC
       LOG_LEVEL: DEBUG

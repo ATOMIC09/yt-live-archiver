@@ -75,7 +75,7 @@ They are never deleted automatically.
 
 To inspect:
 ```bash
-ls /srv/yt-live-archiver/data/failed/
+ls ./data/failed/
 ```
 
 ## Database
@@ -84,7 +84,7 @@ The SQLite database at `/data/archive.db` contains all recording history.
 
 ```bash
 # View all recordings
-sqlite3 /srv/yt-live-archiver/data/archive.db "SELECT youtube_video_id, channel_id, status, created_at FROM recordings ORDER BY created_at DESC LIMIT 20;"
+sqlite3 ./data/archive.db "SELECT youtube_video_id, channel_id, status, created_at FROM recordings ORDER BY created_at DESC LIMIT 20;"
 ```
 
 ## Backup
@@ -93,21 +93,21 @@ Back up these files:
 
 ```bash
 # Database (contains all recording history and state)
-cp /srv/yt-live-archiver/data/archive.db /backup/archive.db.$(date +%Y%m%d)
+cp ./data/archive.db /backup/archive.db.$(date +%Y%m%d)
 
 # Configuration
-cp /srv/yt-live-archiver/config/config.yaml /backup/
+cp ./config/config.yaml /backup/
 
 # Credentials (keep secure)
-cp /srv/yt-live-archiver/credentials/ /backup/credentials/ -r
+cp ./credentials/ /backup/credentials/ -r
 ```
 
 ## Disk Usage
 
 Monitor disk usage for `/data/working`:
 ```bash
-du -sh /srv/yt-live-archiver/data/working/
-du -sh /srv/yt-live-archiver/data/failed/
+du -sh ./data/working/
+du -sh ./data/failed/
 ```
 
 Files in `working/` are deleted after successful upload. Files in `failed/` accumulate until manually removed.

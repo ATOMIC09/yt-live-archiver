@@ -24,12 +24,12 @@ docker compose run --rm yt-live-archiver yt-live-archiver --check-deps
 Make sure your config is mounted correctly:
 ```yaml
 volumes:
-  - /srv/yt-live-archiver/config:/config:ro
+  - ./config:/config:ro
 ```
 
 And the file exists:
 ```bash
-ls /srv/yt-live-archiver/config/config.yaml
+ls ./config/config.yaml
 ```
 
 ---
@@ -62,13 +62,13 @@ channels:
 
 ### "credentials file not found"
 ```bash
-ls /srv/yt-live-archiver/credentials/google-credentials.json
+ls ./credentials/google-credentials.json
 ```
 
 Ensure the credentials are mounted:
 ```yaml
 volumes:
-  - /srv/yt-live-archiver/credentials:/credentials:ro
+  - ./credentials:/credentials:ro
 ```
 
 ### "permission denied" on Drive
@@ -107,10 +107,10 @@ Failed recordings accumulate in `/data/failed/`. They are never auto-deleted.
 
 ```bash
 # See what's there
-du -sh /srv/yt-live-archiver/data/failed/
+du -sh ./data/failed/
 
 # Manually remove old failed recordings (after inspection)
-rm -rf /srv/yt-live-archiver/data/failed/channelname/
+rm -rf ./data/failed/channelname/
 ```
 
 ---
@@ -132,5 +132,5 @@ docker compose up -d
 ## Getting help
 
 1. Check the logs: `docker compose logs -f`
-2. Check the database: `sqlite3 /srv/yt-live-archiver/data/archive.db "SELECT * FROM recordings ORDER BY updated_at DESC LIMIT 5;"`
+2. Check the database: `sqlite3 ./data/archive.db "SELECT * FROM recordings ORDER BY updated_at DESC LIMIT 5;"`
 3. Open an issue at https://github.com/ATOMIC09/yt-live-archiver/issues

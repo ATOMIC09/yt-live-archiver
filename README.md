@@ -34,17 +34,17 @@ cd yt-live-archiver
 ### 2. Create host directories
 
 ```bash
-mkdir -p /srv/yt-live-archiver/{data,config,credentials}
+mkdir -p ./{data,config,credentials}
 ```
 
 ### 3. Configure
 
 ```bash
-cp config/config.example.yaml /srv/yt-live-archiver/config/config.yaml
+cp config/config.example.yaml ./config/config.yaml
 cp .env.example .env
 ```
 
-Edit `/srv/yt-live-archiver/config/config.yaml`:
+Edit `./config/config.yaml`:
 
 ```yaml
 channels:
@@ -69,7 +69,7 @@ Edit `.env` with your webhook URL and any overrides.
 Place your service account credentials file:
 
 ```bash
-cp /path/to/google-credentials.json /srv/yt-live-archiver/credentials/google-credentials.json
+cp /path/to/google-credentials.json ./credentials/google-credentials.json
 ```
 
 See [Google Drive setup guide](docs/google-drive.md) for instructions.

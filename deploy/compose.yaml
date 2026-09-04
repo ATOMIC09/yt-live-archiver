@@ -18,11 +18,11 @@ services:
 
     volumes:
       # Persistent data (recordings, database)
-      - /srv/yt-live-archiver/data:/data
+      - ./data:/data
       # Configuration (read-only)
-      - /srv/yt-live-archiver/config:/config:ro
+      - ./config:/config:ro
       # Google credentials (read-only)
-      - /srv/yt-live-archiver/credentials:/credentials:ro
+      - ./credentials:/credentials:ro
 
     environment:
       TZ: UTC

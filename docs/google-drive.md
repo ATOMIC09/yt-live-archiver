@@ -71,8 +71,8 @@ google_drive:
 ### 7. Place credentials
 
 ```bash
-cp google-credentials.json /srv/yt-live-archiver/credentials/google-credentials.json
-chmod 600 /srv/yt-live-archiver/credentials/google-credentials.json
+cp google-credentials.json ./credentials/google-credentials.json
+chmod 600 ./credentials/google-credentials.json
 ```
 
 ## Security Notes

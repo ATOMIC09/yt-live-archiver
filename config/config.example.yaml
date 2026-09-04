@@ -1,7 +1,7 @@
 # config/config.example.yaml
 # Example configuration for yt-live-archiver
 #
-# Copy this file to /srv/yt-live-archiver/config/config.yaml
+# Copy this file to ./config/config.yaml
 # and fill in your values.
 
 application:
