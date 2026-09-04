@@ -55,6 +55,18 @@ else
     echo "  .env already exists, skipping"
 fi
 
+# Copy or download compose.yaml
+if [ ! -f "$INSTALL_DIR/compose.yaml" ]; then
+    if [ -f "$(dirname "$0")/../deploy/compose.yaml" ]; then
+        cp "$(dirname "$0")/../deploy/compose.yaml" "$INSTALL_DIR/compose.yaml"
+    else
+        wget -q "$GITHUB_RAW_BASE/deploy/compose.yaml" -O "$INSTALL_DIR/compose.yaml" || curl -s "$GITHUB_RAW_BASE/deploy/compose.yaml" -o "$INSTALL_DIR/compose.yaml"
+    fi
+    echo "  Created compose.yaml"
+else
+    echo "  compose.yaml already exists, skipping"
+fi
+
 echo "[3/4] Setup complete!"
 echo ""
 echo "Next steps:"
