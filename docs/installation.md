@@ -18,12 +18,14 @@
 The automated setup script prepares directory structures, asks you for channels and services interactively, configures Google Drive and webhooks, and boots Docker:
 
 ```bash
-# One-liner automated setup (works with or without sudo):
-sudo bash -c "$(curl -sSL https://raw.githubusercontent.com/ATOMIC09/yt-live-archiver/master/scripts/setup.sh)"
+# Automated setup:
+bash -c "$(curl -sSL https://raw.githubusercontent.com/ATOMIC09/yt-live-archiver/master/scripts/setup.sh)"
 
 # Or if you already cloned the repository:
-sudo bash scripts/setup.sh
+bash scripts/setup.sh
 ```
+
+> **Note**: If installing into a root-owned system directory (like `/opt/stacks`), prefix with `sudo`: `sudo bash scripts/setup.sh` or `sudo bash -c "$(curl ...)"`.
 
 The script will guide you step-by-step through:
 1. Adding one or more YouTube channels.

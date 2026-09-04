@@ -30,15 +30,17 @@ Automated, resilient YouTube livestream archiver with Google Drive sync and rich
 
 ## ⚡ Quick Start (60 Seconds)
 
-The easiest way to get started on any Linux server (e.g. Ubuntu / Debian) is using the interactive setup wizard:
+The easiest way to get started on any Linux machine is using the interactive setup wizard:
 
 ```bash
-# One-liner automated setup (works with or without sudo):
-sudo bash -c "$(curl -sSL https://raw.githubusercontent.com/ATOMIC09/yt-live-archiver/master/scripts/setup.sh)"
+# Automated setup (run in your target installation directory):
+bash -c "$(curl -sSL https://raw.githubusercontent.com/ATOMIC09/yt-live-archiver/master/scripts/setup.sh)"
 
 # Or if you already cloned the repository:
-sudo bash scripts/setup.sh
+bash scripts/setup.sh
 ```
+
+> **Note**: If installing into a root-owned system directory (e.g. `/opt/stacks`), simply prefix with `sudo`: `sudo bash scripts/setup.sh` or `sudo bash -c "$(curl ...)"`.
 
 The interactive wizard will:
 1. Create all necessary data and configuration directories.
