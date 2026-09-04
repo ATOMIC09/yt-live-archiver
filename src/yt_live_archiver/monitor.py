@@ -78,7 +78,7 @@ class ChannelMonitor:
 
         if result.returncode != 0:
             # Not live or channel offline — expected and non-alarming
-            self._log.debug("Channel not live (yt-dlp exit=%d)", result.returncode)
+            self._log.debug("channel_not_live", returncode=result.returncode)
             return None
 
         # Parse JSON output

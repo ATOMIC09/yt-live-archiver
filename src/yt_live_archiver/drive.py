@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import json
 import logging
 import os
 import time
@@ -19,6 +20,7 @@ from pathlib import Path
 from typing import Optional
 
 from google.oauth2 import service_account
+from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload
@@ -76,9 +78,22 @@ class DriveClient:
             )
 
         try:
-            credentials = service_account.Credentials.from_service_account_file(
-                creds_file, scopes=_SCOPES
-            )
+            with open(creds_file, encoding="utf-8") as f:
+                creds_data = json.load(f)
+
+            if creds_data.get("type") == "service_account":
+                credentials = service_account.Credentials.from_service_account_file(
+                    creds_file, scopes=_SCOPES
+                )
+            elif "refresh_token" in creds_data or creds_data.get("type") == "authorized_user":
+                credentials = Credentials.from_authorized_user_file(
+                    creds_file, scopes=_SCOPES
+                )
+            else:
+                credentials = service_account.Credentials.from_service_account_file(
+                    creds_file, scopes=_SCOPES
+                )
+
             self._service = build("drive", "v3", credentials=credentials, cache_discovery=False)
         except Exception as exc:
             raise DriveAuthError(f"Failed to authenticate with Google Drive: {exc}") from exc
@@ -114,10 +129,11 @@ class DriveClient:
 
         service = self._get_service()
 
-        file_metadata = {
+        file_metadata: dict = {
             "name": remote_name,
-            "parents": [self.config.folder_id],
         }
+        if self.config.folder_id:
+            file_metadata["parents"] = [self.config.folder_id]
 
         media = MediaFileUpload(
             str(local_path),

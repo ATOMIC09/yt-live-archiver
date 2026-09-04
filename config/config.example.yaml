@@ -41,11 +41,13 @@ processing:
 google_drive:
   # Set to true to upload completed recordings to Google Drive
   enabled: false
-  # Path to service account credentials JSON (mounted read-only)
-  credentials_file: /config/credentials.json
-  # ID of the Shared Drive (leave empty for personal Drive)
+  # Path to credentials JSON inside the container:
+  # - For Personal Google Accounts (e.g. Google One 5TB): Use OAuth token JSON (generated via scripts/auth_gdrive.py)
+  # - For Google Workspace: Use Service Account credentials JSON or OAuth token JSON
+  credentials_file: /config/token.json
+  # ID of the Shared Drive (Google Workspace only; leave empty for personal Drive)
   shared_drive_id: ""
-  # ID of the folder to upload recordings to (REQUIRED)
+  # ID of the folder to upload recordings to (from Drive URL: /folders/<ID>)
   folder_id: ""
   # Upload chunk size in MB (larger = fewer requests, more memory)
   chunk_size_mb: 64
