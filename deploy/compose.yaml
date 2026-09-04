@@ -14,7 +14,7 @@ services:
 
     # Load secrets and environment from .env file
     env_file:
-      - ../.env
+      - .env
 
     volumes:
       # Persistent data (recordings, database)
