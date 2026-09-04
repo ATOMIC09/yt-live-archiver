@@ -27,6 +27,11 @@ echo "[1/4] Creating directories..."
 mkdir -p "$INSTALL_DIR"/{data,config,credentials}
 mkdir -p "$INSTALL_DIR"/data/{working,failed,metadata}
 
+# The Docker container runs as UID 1000. Give it ownership of the data dir.
+if [ "$(id -u)" = "0" ]; then
+    chown -R 1000:1000 "$INSTALL_DIR/data"
+fi
+
 echo "[2/4] Copying example files..."
 
 GITHUB_RAW_BASE="https://raw.githubusercontent.com/ATOMIC09/yt-live-archiver/master"
