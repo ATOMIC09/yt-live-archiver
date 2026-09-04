@@ -33,7 +33,11 @@ Automated, resilient YouTube livestream archiver with Google Drive sync and rich
 The easiest way to get started on any Linux server (e.g. Ubuntu / Debian) is using the interactive setup wizard:
 
 ```bash
-bash <(curl -sSL https://raw.githubusercontent.com/ATOMIC09/yt-live-archiver/master/scripts/setup.sh)
+# One-liner automated setup (works with or without sudo):
+sudo bash -c "$(curl -sSL https://raw.githubusercontent.com/ATOMIC09/yt-live-archiver/master/scripts/setup.sh)"
+
+# Or if you already cloned the repository:
+sudo bash scripts/setup.sh
 ```
 
 The interactive wizard will:

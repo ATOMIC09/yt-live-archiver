@@ -29,6 +29,16 @@ if ! command -v python3 &> /dev/null; then
     exit 1
 fi
 
+# Check write permissions
+if [ -d "$INSTALL_DIR" ] && [ ! -w "$INSTALL_DIR" ]; then
+    echo "ERROR: Cannot write to $INSTALL_DIR (Permission denied)."
+    echo "Please re-run with sudo:"
+    echo "  sudo bash -c \"\$(curl -sSL https://raw.githubusercontent.com/ATOMIC09/yt-live-archiver/master/scripts/setup.sh)\""
+    echo "Or if already in the repository directory:"
+    echo "  sudo bash scripts/setup.sh"
+    exit 1
+fi
+
 echo "[1/4] Creating directories..."
 mkdir -p "$INSTALL_DIR"/{data,config,scripts}
 mkdir -p "$INSTALL_DIR"/data/{working,failed,metadata}

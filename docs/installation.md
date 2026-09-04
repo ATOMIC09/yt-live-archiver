@@ -18,7 +18,11 @@
 The automated setup script prepares directory structures, asks you for channels and services interactively, configures Google Drive and webhooks, and boots Docker:
 
 ```bash
-bash <(curl -sSL https://raw.githubusercontent.com/ATOMIC09/yt-live-archiver/master/scripts/setup.sh)
+# One-liner automated setup (works with or without sudo):
+sudo bash -c "$(curl -sSL https://raw.githubusercontent.com/ATOMIC09/yt-live-archiver/master/scripts/setup.sh)"
+
+# Or if you already cloned the repository:
+sudo bash scripts/setup.sh
 ```
 
 The script will guide you step-by-step through:
