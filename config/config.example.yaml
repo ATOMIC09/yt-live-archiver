@@ -39,7 +39,8 @@ processing:
   max_parallel_uploads: 2
 
 google_drive:
-  enabled: true
+  # Set to true to upload completed recordings to Google Drive
+  enabled: false
   # Path to service account credentials JSON (mounted read-only)
   credentials_file: /credentials/google-credentials.json
   # ID of the Shared Drive (leave empty for personal Drive)
@@ -50,7 +51,7 @@ google_drive:
   chunk_size_mb: 64
 
 webhook:
-  enabled: true
+  enabled: false
   # Webhook URL (Discord, Slack, or custom HTTP endpoint)
   # Can also be set via WEBHOOK_URL environment variable
   url: ""
@@ -77,11 +78,13 @@ retry:
 # ── Channels ─────────────────────────────────────────────────────────────────
 # Add one entry per YouTube channel to monitor.
 # The 'id' field must be a short, stable, filesystem-safe identifier.
+#
+# NOTE: You MUST uncomment and configure at least one channel below to start.
 channels:
-  - id: nasa
-    name: NASA
-    url: https://www.youtube.com/@NASA/live
-    enabled: true
+  # - id: nasa
+  #   name: NASA
+  #   url: https://www.youtube.com/@NASA/live
+  #   enabled: true
 
   # - id: example_channel
   #   name: Example Channel
