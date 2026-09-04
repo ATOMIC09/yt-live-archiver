@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from yt_live_archiver.database import Database
+from yt_live_archiver.migrations import run_migrations
 from yt_live_archiver.models import Recording, RecordingStatus
 
 
@@ -16,6 +17,7 @@ def tmp_db(tmp_path):
     """Create a temporary database for testing."""
     db_path = str(tmp_path / "test.db")
     db = Database(db_path)
+    run_migrations(db_path)
     return db
 
 

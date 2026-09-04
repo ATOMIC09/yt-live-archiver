@@ -40,8 +40,65 @@ def register(fn: Migration) -> Migration:
 
 @register
 def _migration_1(conn: sqlite3.Connection) -> None:
-    """Initial schema — created by database._init_db(). Nothing additional needed."""
-    pass  # Version 1 is established by the base schema in database.py
+    """Initial schema."""
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS schema_version (
+            version INTEGER NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS recordings (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            youtube_video_id    TEXT    NOT NULL UNIQUE,
+            channel_id          TEXT    NOT NULL,
+            channel_name        TEXT    NOT NULL DEFAULT '',
+            channel_url         TEXT    NOT NULL DEFAULT '',
+            youtube_url         TEXT    NOT NULL DEFAULT '',
+            title               TEXT    NOT NULL DEFAULT '',
+
+            status              TEXT    NOT NULL DEFAULT 'DISCOVERED',
+
+            detected_at         TEXT,
+            started_at          TEXT,
+            ended_at            TEXT,
+
+            local_path          TEXT,
+            local_size_bytes    INTEGER NOT NULL DEFAULT 0,
+
+            duration_seconds    REAL,
+            container           TEXT,
+            video_codec         TEXT,
+            audio_codec         TEXT,
+            width               INTEGER,
+            height              INTEGER,
+            fps                 REAL,
+            video_bitrate       INTEGER,
+            audio_bitrate       INTEGER,
+
+            drive_file_id       TEXT,
+            drive_folder_id     TEXT,
+            drive_size_bytes    INTEGER NOT NULL DEFAULT 0,
+
+            media_verified      INTEGER NOT NULL DEFAULT 0,
+            drive_verified      INTEGER NOT NULL DEFAULT 0,
+            webhook_sent        INTEGER NOT NULL DEFAULT 0,
+
+            recording_attempts      INTEGER NOT NULL DEFAULT 0,
+            verification_attempts   INTEGER NOT NULL DEFAULT 0,
+            upload_attempts         INTEGER NOT NULL DEFAULT 0,
+            webhook_attempts        INTEGER NOT NULL DEFAULT 0,
+
+            last_error          TEXT,
+            last_error_at       TEXT,
+
+            created_at          TEXT,
+            updated_at          TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_recordings_status ON recordings(status);
+        CREATE INDEX IF NOT EXISTS idx_recordings_channel_id ON recordings(channel_id);
+    """)
+    # Insert the initial version row for this migration so the runner can update it
+    conn.execute("INSERT INTO schema_version (version) VALUES (0)")
 
 
 # ---------------------------------------------------------------------------
@@ -59,8 +116,12 @@ def run_migrations(db_path: str) -> None:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     try:
-        row = conn.execute("SELECT version FROM schema_version").fetchone()
-        current_version = row["version"] if row else 0
+        try:
+            row = conn.execute("SELECT version FROM schema_version").fetchone()
+            current_version = row["version"] if row else 0
+        except sqlite3.OperationalError:
+            # Table does not exist on a fresh database
+            current_version = 0
 
         if current_version >= SCHEMA_VERSION:
             logger.debug(

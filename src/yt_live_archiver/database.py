@@ -32,7 +32,6 @@ class Database:
     def __init__(self, db_path: str) -> None:
         self.db_path = db_path
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-        self._init_db()
 
     # ------------------------------------------------------------------
     # Internal connection management
@@ -52,78 +51,6 @@ class Database:
             raise
         finally:
             conn.close()
-
-    # ------------------------------------------------------------------
-    # Schema initialisation
-    # ------------------------------------------------------------------
-
-    def _init_db(self) -> None:
-        """Create tables and indexes if they do not exist."""
-        with self._conn() as conn:
-            conn.executescript("""
-                CREATE TABLE IF NOT EXISTS schema_version (
-                    version INTEGER NOT NULL
-                );
-
-                CREATE TABLE IF NOT EXISTS recordings (
-                    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-                    youtube_video_id    TEXT    NOT NULL UNIQUE,
-                    channel_id          TEXT    NOT NULL,
-                    channel_name        TEXT    NOT NULL DEFAULT '',
-                    channel_url         TEXT    NOT NULL DEFAULT '',
-                    youtube_url         TEXT    NOT NULL DEFAULT '',
-                    title               TEXT    NOT NULL DEFAULT '',
-
-                    status              TEXT    NOT NULL DEFAULT 'DISCOVERED',
-
-                    detected_at         TEXT,
-                    started_at          TEXT,
-                    ended_at            TEXT,
-
-                    local_path          TEXT,
-                    local_size_bytes    INTEGER NOT NULL DEFAULT 0,
-
-                    duration_seconds    REAL,
-                    container           TEXT,
-                    video_codec         TEXT,
-                    audio_codec         TEXT,
-                    width               INTEGER,
-                    height              INTEGER,
-                    fps                 REAL,
-                    video_bitrate       INTEGER,
-                    audio_bitrate       INTEGER,
-
-                    drive_file_id       TEXT,
-                    drive_folder_id     TEXT,
-                    drive_size_bytes    INTEGER NOT NULL DEFAULT 0,
-
-                    media_verified      INTEGER NOT NULL DEFAULT 0,
-                    drive_verified      INTEGER NOT NULL DEFAULT 0,
-                    webhook_sent        INTEGER NOT NULL DEFAULT 0,
-
-                    recording_attempts      INTEGER NOT NULL DEFAULT 0,
-                    verification_attempts   INTEGER NOT NULL DEFAULT 0,
-                    upload_attempts         INTEGER NOT NULL DEFAULT 0,
-                    webhook_attempts        INTEGER NOT NULL DEFAULT 0,
-
-                    last_error          TEXT,
-                    last_error_at       TEXT,
-
-                    created_at          TEXT,
-                    updated_at          TEXT
-                );
-
-                CREATE INDEX IF NOT EXISTS idx_recordings_status
-                    ON recordings(status);
-
-                CREATE INDEX IF NOT EXISTS idx_recordings_channel_id
-                    ON recordings(channel_id);
-            """)
-
-            # Set schema version if first run
-            row = conn.execute("SELECT version FROM schema_version").fetchone()
-            if row is None:
-                conn.execute("INSERT INTO schema_version (version) VALUES (?)", (SCHEMA_VERSION,))
 
     # ------------------------------------------------------------------
     # CRUD
