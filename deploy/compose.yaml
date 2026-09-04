@@ -1,0 +1,40 @@
+# deploy/compose.yaml — Production Docker Compose deployment
+#
+# This is the reference Compose file for production deployment.
+# Copy it to your deployment directory and adjust paths as needed.
+#
+# Usage:
+#   docker compose -f deploy/compose.yaml up -d
+
+services:
+  yt-live-archiver:
+    image: ghcr.io/atomic09/yt-live-archiver:latest
+    container_name: yt-live-archiver
+    restart: unless-stopped
+
+    # Load secrets and environment from .env file
+    env_file:
+      - ../.env
+
+    volumes:
+      # Persistent data (recordings, database)
+      - /srv/yt-live-archiver/data:/data
+      # Configuration (read-only)
+      - /srv/yt-live-archiver/config:/config:ro
+      # Google credentials (read-only)
+      - /srv/yt-live-archiver/credentials:/credentials:ro
+
+    environment:
+      TZ: UTC
+      LOG_LEVEL: INFO
+
+    # Resource limits (adjust as needed)
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '2.0'
+    #       memory: 2G
+
+    # No ports exposed — this is a background worker
+    # No privileged mode required
+    # No host network required

@@ -1,0 +1,56 @@
+# compose.yaml — Root-level Docker Compose for quick start / development
+#
+# For production, use deploy/compose.yaml or adjust paths below.
+#
+# Quick start:
+#   cp .env.example .env
+#   # Edit .env with your settings
+#   cp config/config.example.yaml /srv/yt-live-archiver/config/config.yaml
+#   # Add your Google credentials to /srv/yt-live-archiver/credentials/
+#   docker compose up -d
+#
+# Build locally (development):
+#   docker compose --profile build up -d
+
+services:
+  yt-live-archiver:
+    image: ghcr.io/atomic09/yt-live-archiver:latest
+    container_name: yt-live-archiver
+    restart: unless-stopped
+
+    env_file:
+      - .env
+
+    volumes:
+      - /srv/yt-live-archiver/data:/data
+      - /srv/yt-live-archiver/config:/config:ro
+      - /srv/yt-live-archiver/credentials:/credentials:ro
+
+    environment:
+      TZ: UTC
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+    healthcheck:
+      test: ["CMD", "yt-live-archiver", "--healthcheck"]
+      interval: 30s
+      timeout: 10s
+      start_period: 15s
+      retries: 3
+
+  # Development build profile (docker compose --profile build up)
+  yt-live-archiver-dev:
+    profiles: ["build"]
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: yt-live-archiver-dev
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - /srv/yt-live-archiver/data:/data
+      - /srv/yt-live-archiver/config:/config:ro
+      - /srv/yt-live-archiver/credentials:/credentials:ro
+    environment:
+      TZ: UTC
+      LOG_LEVEL: DEBUG

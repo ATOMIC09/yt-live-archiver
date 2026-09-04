@@ -1,0 +1,89 @@
+# config/config.example.yaml
+# Example configuration for yt-live-archiver
+#
+# Copy this file to /srv/yt-live-archiver/config/config.yaml
+# and fill in your values.
+
+application:
+  data_dir: /data
+  database: /data/archive.db
+
+youtube:
+  # How often to poll each channel for live status (seconds)
+  poll_interval_seconds: 30
+  # How long to wait for a scheduled stream to start (seconds)
+  wait_for_video_seconds: 300
+  # Record from the very beginning of the stream (recommended)
+  live_from_start: true
+
+recording:
+  working_dir: /data/working
+  failed_dir: /data/failed
+  # yt-dlp format string: prefer VP9 video + best audio, fallback to best
+  format: "bv*[vcodec^=vp9]+ba/bv+ba/best"
+  # Output container format
+  container: mkv
+
+verification:
+  # Require at least one video stream
+  require_video: true
+  # Require at least one audio stream
+  require_audio: true
+  # Run FFmpeg null decode test (recommended — detects corrupted streams)
+  run_decode_test: true
+  # Minimum recording duration to accept as valid (seconds)
+  minimum_duration_seconds: 30
+
+processing:
+  # Maximum number of concurrent uploads to Google Drive
+  max_parallel_uploads: 2
+
+google_drive:
+  enabled: true
+  # Path to service account credentials JSON (mounted read-only)
+  credentials_file: /credentials/google-credentials.json
+  # ID of the Shared Drive (leave empty for personal Drive)
+  shared_drive_id: ""
+  # ID of the folder to upload recordings to (REQUIRED)
+  folder_id: ""
+  # Upload chunk size in MB (larger = fewer requests, more memory)
+  chunk_size_mb: 64
+
+webhook:
+  enabled: true
+  # Webhook URL (Discord, Slack, or custom HTTP endpoint)
+  # Can also be set via WEBHOOK_URL environment variable
+  url: ""
+  # Request timeout (seconds)
+  timeout_seconds: 15
+  # Maximum delivery attempts before giving up
+  max_attempts: 10
+
+cleanup:
+  # Require webhook delivery before deleting local file
+  # Set to false if you don't use webhooks
+  require_webhook: true
+
+retry:
+  # Initial backoff delay (seconds)
+  initial_delay_seconds: 5.0
+  # Maximum backoff delay (seconds)
+  max_delay_seconds: 300.0
+  # Delay multiplier per retry
+  multiplier: 2.0
+  # Add random jitter to backoff delays
+  jitter: true
+
+# ── Channels ─────────────────────────────────────────────────────────────────
+# Add one entry per YouTube channel to monitor.
+# The 'id' field must be a short, stable, filesystem-safe identifier.
+channels:
+  - id: nasa
+    name: NASA
+    url: https://www.youtube.com/@NASA/live
+    enabled: true
+
+  # - id: example_channel
+  #   name: Example Channel
+  #   url: https://www.youtube.com/@ExampleChannel/live
+  #   enabled: true
