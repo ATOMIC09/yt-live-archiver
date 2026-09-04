@@ -29,15 +29,27 @@ mkdir -p "$INSTALL_DIR"/data/{working,failed,metadata}
 
 echo "[2/4] Copying example files..."
 
+GITHUB_RAW_BASE="https://raw.githubusercontent.com/ATOMIC09/yt-live-archiver/main"
+
+# Copy or download config.yaml
 if [ ! -f "$INSTALL_DIR/config/config.yaml" ]; then
-    cp "$(dirname "$0")/../config/config.example.yaml" "$INSTALL_DIR/config/config.yaml"
+    if [ -f "$(dirname "$0")/../config/config.example.yaml" ]; then
+        cp "$(dirname "$0")/../config/config.example.yaml" "$INSTALL_DIR/config/config.yaml"
+    else
+        wget -q "$GITHUB_RAW_BASE/config/config.example.yaml" -O "$INSTALL_DIR/config/config.yaml" || curl -s "$GITHUB_RAW_BASE/config/config.example.yaml" -o "$INSTALL_DIR/config/config.yaml"
+    fi
     echo "  Created $INSTALL_DIR/config/config.yaml"
 else
     echo "  config.yaml already exists, skipping"
 fi
 
-if [ ! -f ".env" ]; then
-    cp "$(dirname "$0")/../.env.example" .env
+# Copy or download .env
+if [ ! -f "$INSTALL_DIR/.env" ]; then
+    if [ -f "$(dirname "$0")/../.env.example" ]; then
+        cp "$(dirname "$0")/../.env.example" "$INSTALL_DIR/.env"
+    else
+        wget -q "$GITHUB_RAW_BASE/.env.example" -O "$INSTALL_DIR/.env" || curl -s "$GITHUB_RAW_BASE/.env.example" -o "$INSTALL_DIR/.env"
+    fi
     echo "  Created .env"
 else
     echo "  .env already exists, skipping"
