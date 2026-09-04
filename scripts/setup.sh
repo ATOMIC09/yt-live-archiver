@@ -29,7 +29,7 @@ mkdir -p "$INSTALL_DIR"/data/{working,failed,metadata}
 
 echo "[2/4] Copying example files..."
 
-GITHUB_RAW_BASE="https://raw.githubusercontent.com/ATOMIC09/yt-live-archiver/main"
+GITHUB_RAW_BASE="https://raw.githubusercontent.com/ATOMIC09/yt-live-archiver/master"
 
 # Copy or download config.yaml
 if [ ! -f "$INSTALL_DIR/config/config.yaml" ]; then
