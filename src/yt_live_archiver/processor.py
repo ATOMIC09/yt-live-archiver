@@ -11,11 +11,9 @@ Multiple recordings can be processed concurrently (limited by upload semaphore).
 from __future__ import annotations
 
 import asyncio
-import logging
 import shutil
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 from yt_live_archiver.cleanup import Cleanup
 from yt_live_archiver.config import AppConfig
@@ -23,7 +21,7 @@ from yt_live_archiver.database import Database
 from yt_live_archiver.logging_config import get_logger
 from yt_live_archiver.media import MediaVerifier
 from yt_live_archiver.models import Recording, RecordingStatus
-from yt_live_archiver.recorder import RecordingResult, Recorder
+from yt_live_archiver.recorder import RecordingResult
 from yt_live_archiver.state_machine import state_machine
 from yt_live_archiver.uploader import Uploader
 from yt_live_archiver.utils import build_archive_filename, ensure_dir, file_size_bytes
@@ -168,7 +166,7 @@ class Processor:
         else:
             log.warning("cleanup_skipped_or_failed")
 
-    def _finalize_file(self, recording: Recording, source_path: Path) -> Optional[Path]:
+    def _finalize_file(self, recording: Recording, source_path: Path) -> Path | None:
         """Move the yt-dlp output to a stable final working path.
 
         The final path includes the video ID so it's unambiguous.
@@ -182,7 +180,7 @@ class Processor:
         elif recording.detected_at:
             started_date = recording.detected_at[:10]
         else:
-            started_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            started_date = datetime.now(UTC).strftime("%Y-%m-%d")
 
         filename = build_archive_filename(
             channel_id=recording.channel_id,
@@ -210,7 +208,7 @@ class Processor:
             log.error("finalize_move_failed", error=str(exc))
             return None
 
-    async def _move_to_failed(self, recording: Recording, source_path: Optional[Path]) -> None:
+    async def _move_to_failed(self, recording: Recording, source_path: Path | None) -> None:
         """Move a failed recording to the failed directory for inspection."""
         if source_path is None or not source_path.exists():
             return
@@ -235,7 +233,11 @@ class Processor:
 
         Used by the recovery manager to continue interrupted recordings.
         """
-        log = get_logger(__name__, video_id=recording.youtube_video_id, status=recording.status.value)
+        log = get_logger(
+            __name__,
+            video_id=recording.youtube_video_id,
+            status=recording.status.value,
+        )
         log.info("reprocessing_recording")
 
         if recording.status == RecordingStatus.VERIFYING:

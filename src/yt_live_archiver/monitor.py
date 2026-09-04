@@ -9,11 +9,8 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 import subprocess
-import time
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from yt_live_archiver.config import AppConfig, ChannelConfig
 from yt_live_archiver.database import Database
@@ -44,7 +41,7 @@ class ChannelMonitor:
         self.config = config
         self._log = get_logger(__name__, channel=channel.id)
 
-    def check_live(self) -> Optional[LiveStreamInfo]:
+    def check_live(self) -> LiveStreamInfo | None:
         """Check if the channel is currently live.
 
         Returns LiveStreamInfo if live, None if offline or error.
@@ -152,7 +149,7 @@ class MonitorLoop:
                     self._stop_event.wait(),
                     timeout=self.config.youtube.poll_interval_seconds,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass  # Normal — sleep expired, loop again
 
         self._log.info("Monitor loop stopped")
@@ -178,7 +175,7 @@ class MonitorLoop:
                 return
 
             # Create DB record immediately
-            now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
             recording = Recording(
                 youtube_video_id=live.video_id,
                 channel_id=monitor.channel.id,

@@ -16,11 +16,9 @@ Metadata extracted and returned for DB persistence.
 from __future__ import annotations
 
 import json
-import logging
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 from yt_live_archiver.config import VerificationConfig
 from yt_live_archiver.logging_config import get_logger
@@ -55,15 +53,15 @@ class AudioStreamInfo:
 class MediaMetadata:
     container: str = ""
     duration_seconds: float = 0.0
-    video: Optional[VideoStreamInfo] = None
-    audio: Optional[AudioStreamInfo] = None
+    video: VideoStreamInfo | None = None
+    audio: AudioStreamInfo | None = None
     raw_ffprobe: dict = field(default_factory=dict)
 
 
 @dataclass
 class VerificationResult:
     passed: bool = False
-    metadata: Optional[MediaMetadata] = None
+    metadata: MediaMetadata | None = None
     ffprobe_valid: bool = False
     decode_test_passed: bool = False
     errors: list[str] = field(default_factory=list)
@@ -168,7 +166,7 @@ class MediaVerifier:
 
     def _run_ffprobe(
         self, path: Path, result: VerificationResult, log
-    ) -> Optional[MediaMetadata]:
+    ) -> MediaMetadata | None:
         """Run ffprobe and parse output into MediaMetadata."""
         cmd = [
             "ffprobe",
@@ -223,8 +221,8 @@ class MediaVerifier:
 
         container = fmt.get("format_name", "")
 
-        video_info: Optional[VideoStreamInfo] = None
-        audio_info: Optional[AudioStreamInfo] = None
+        video_info: VideoStreamInfo | None = None
+        audio_info: AudioStreamInfo | None = None
 
         for stream in streams:
             codec_type = stream.get("codec_type", "")

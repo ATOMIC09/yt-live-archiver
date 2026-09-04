@@ -1,95 +1,113 @@
 # Configuration Reference
 
-All configuration lives in `/config/config.yaml` (mounted read-only).
-Sensitive values can be overridden via environment variables.
+All application settings are defined in `config/config.yaml` (mounted read-only into `/config/config.yaml` inside the container).
 
-## application
+Environment variables can override sensitive values without editing YAML.
 
-| Key | Default | Description |
-|-----|---------|-------------|
-| `data_dir` | `/data` | Root data directory |
-| `database` | `/data/archive.db` | SQLite database path |
+---
 
-## youtube
+## Configuration Sections
+
+### `application`
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `poll_interval_seconds` | `30` | How often to check each channel |
-| `wait_for_video_seconds` | `300` | Time to wait for a scheduled stream to start |
-| `live_from_start` | `true` | Record from the very beginning of the stream |
+| `data_dir` | `/data` | Root path for runtime files and database |
+| `database` | `/data/archive.db` | SQLite database file storing recording state |
 
-## recording
+---
 
-| Key | Default | Description |
-|-----|---------|-------------|
-| `working_dir` | `/data/working` | Directory for in-progress recordings |
-| `failed_dir` | `/data/failed` | Directory for failed recordings (kept for inspection) |
-| `format` | `bv*[vcodec^=vp9]+ba/bv+ba/best` | yt-dlp format selection string |
-| `container` | `mkv` | Output container format |
-
-## verification
+### `youtube`
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `require_video` | `true` | Fail verification if no video stream |
-| `require_audio` | `true` | Fail verification if no audio stream |
-| `run_decode_test` | `true` | Run FFmpeg decode test (recommended) |
-| `minimum_duration_seconds` | `30` | Minimum acceptable recording duration |
+| `poll_interval_seconds` | `30` | Frequency in seconds to check each channel for live status |
+| `wait_for_video_seconds` | `300` | How long to wait if a live event is scheduled |
+| `live_from_start` | `true` | Record from stream beginning (captures buffered rewind window) |
 
-## processing
+---
 
-| Key | Default | Description |
-|-----|---------|-------------|
-| `max_parallel_uploads` | `2` | Maximum concurrent Drive uploads |
-
-## google_drive
+### `recording`
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `enabled` | `true` | Enable Google Drive upload |
-| `credentials_file` | `/credentials/google-credentials.json` | Service account JSON path |
-| `shared_drive_id` | `""` | Shared Drive ID (empty = personal Drive) |
-| `folder_id` | `""` | Target folder ID (required if enabled) |
-| `chunk_size_mb` | `64` | Upload chunk size in MB |
+| `working_dir` | `/data/working` | Directory for active stream downloads |
+| `failed_dir` | `/data/failed` | Directory where unverified/failed files are quarantined |
+| `format` | `bv*[vcodec^=vp9]+ba/bv+ba/best` | yt-dlp format selector string |
+| `container` | `mkv` | Recording file container format (`mkv` recommended for streaming) |
 
-## webhook
+---
 
-| Key | Default | Description |
-|-----|---------|-------------|
-| `enabled` | `true` | Enable webhook notifications |
-| `url` | `""` | Webhook URL (required if enabled) |
-| `timeout_seconds` | `15` | Request timeout |
-| `max_attempts` | `10` | Maximum delivery attempts |
-
-Can also be set via `WEBHOOK_URL` environment variable.
-
-## cleanup
+### `verification`
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `require_webhook` | `true` | Require webhook delivery before deleting local file |
+| `require_video` | `true` | Fails verification if no video track is found |
+| `require_audio` | `true` | Fails verification if no audio track is found |
+| `run_decode_test` | `true` | Runs an FFmpeg packet decode check across the file |
+| `minimum_duration_seconds` | `30` | Minimum duration required for a recording to be considered valid |
 
-Set to `false` if you don't use webhooks and still want automatic cleanup.
+---
 
-## retry
+### `processing`
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `initial_delay_seconds` | `5.0` | First retry delay |
-| `max_delay_seconds` | `300.0` | Maximum retry delay |
-| `multiplier` | `2.0` | Delay multiplier per retry |
-| `jitter` | `true` | Add random jitter |
+| `max_parallel_uploads` | `2` | Maximum concurrent Google Drive upload threads |
 
-## channels
+---
 
-List of channels to monitor.
+### `google_drive`
 
-| Key | Required | Description |
-|-----|----------|-------------|
-| `id` | Yes | Short, stable, filesystem-safe identifier |
-| `name` | Yes | Human-readable channel name |
-| `url` | Yes | YouTube channel `/live` URL |
-| `enabled` | No (default: `true`) | Enable/disable monitoring |
+| Key | Default | Description |
+|-----|---------|-------------|
+| `enabled` | `true` | Whether to upload completed recordings to Google Drive |
+| `credentials_file` | `/config/token.json` | Path to OAuth token JSON or Service Account key JSON |
+| `folder_id` | `""` | Target destination Google Drive folder ID |
+| `shared_drive_id` | `""` | ID of the Shared Drive (Google Workspace only; empty for personal Drive) |
+| `chunk_size_mb` | `64` | Chunk size in megabytes for resumable uploads |
+
+> **Channel Subfolders**: Uploads are automatically placed into subfolders named after each channel (e.g. `NASA/`, `SpaceX/`) inside your target folder.
+
+---
+
+### `webhook`
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `enabled` | `true` | Whether to send webhook alerts upon upload completion |
+| `url` | `""` | Webhook endpoint URL (Discord, Slack, or custom JSON receiver) |
+| `timeout_seconds` | `15` | HTTP request timeout in seconds |
+| `max_attempts` | `10` | Maximum delivery attempts before giving up |
+
+---
+
+### `cleanup`
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `require_webhook` | `true` | Require successful webhook delivery before deleting local file |
+
+Set `require_webhook: false` if you do not use webhooks and want immediate disk cleanup after Drive upload succeeds.
+
+---
+
+### `retry`
+
+Exponential backoff parameters for network requests (Drive uploads, webhooks, YouTube checks):
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `initial_delay_seconds` | `5.0` | Initial delay for first retry |
+| `multiplier` | `2.0` | Factor multiplied on each subsequent attempt |
+| `max_delay_seconds` | `300.0` | Maximum ceiling delay |
+| `jitter` | `true` | Adds random ±50% jitter to prevent thundering herds |
+
+---
+
+### `channels`
+
+List of YouTube channels to continuously monitor:
 
 ```yaml
 channels:
@@ -97,16 +115,31 @@ channels:
     name: NASA
     url: https://www.youtube.com/@NASA/live
     enabled: true
+  - id: spacex
+    name: SpaceX
+    url: https://www.youtube.com/@SpaceX/live
+    enabled: true
 ```
 
-## Environment Variables
+| Key | Required | Description |
+|-----|----------|-------------|
+| `id` | Yes | Stable, filesystem-safe alphanumeric identifier |
+| `name` | Yes | Human-friendly display name (also used as the Google Drive subfolder name) |
+| `url` | Yes | Channel `/live` URL |
+| `enabled` | No (default: `true`) | Easily toggle channels on/off without removing them |
 
-| Variable | Overrides |
-|----------|-----------|
-| `CONFIG_PATH` | Config file path |
-| `WEBHOOK_URL` | `webhook.url` |
-| `GOOGLE_CREDENTIALS_FILE` | `google_drive.credentials_file` |
-| `GOOGLE_SHARED_DRIVE_ID` | `google_drive.shared_drive_id` |
-| `GOOGLE_FOLDER_ID` | `google_drive.folder_id` |
-| `LOG_LEVEL` | Logging level (DEBUG/INFO/WARNING/ERROR) |
-| `TZ` | Container timezone |
+---
+
+## Environment Variable Overrides
+
+Environment variables override values loaded from `config.yaml`:
+
+| Variable | Overrides | Example |
+|----------|-----------|---------|
+| `CONFIG_PATH` | Path to config file | `/config/config.yaml` |
+| `WEBHOOK_URL` | `webhook.url` | `https://discord.com/api/webhooks/...` |
+| `GOOGLE_CREDENTIALS_FILE` | `google_drive.credentials_file` | `/config/token.json` |
+| `GOOGLE_FOLDER_ID` | `google_drive.folder_id` | `1a2b3c4d5e...` |
+| `GOOGLE_SHARED_DRIVE_ID` | `google_drive.shared_drive_id` | `0ABcDeFg...` |
+| `LOG_LEVEL` | Application logging level | `DEBUG`, `INFO`, `WARNING`, `ERROR` |
+| `TZ` | Container timezone | `UTC`, `America/New_York`, `Asia/Bangkok` |

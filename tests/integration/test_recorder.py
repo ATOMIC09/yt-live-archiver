@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from yt_live_archiver.models import Recording, RecordingStatus
-from yt_live_archiver.recorder import Recorder, RecordingResult
+from yt_live_archiver.recorder import Recorder
 
 
 def make_config(tmp_path: Path):
@@ -73,7 +70,11 @@ class TestRecorder:
         recording = make_recording()
 
         # Pre-create the output file
-        working_dir = Path(config.recording.working_dir) / recording.channel_id / recording.youtube_video_id
+        working_dir = (
+            Path(config.recording.working_dir)
+            / recording.channel_id
+            / recording.youtube_video_id
+        )
         working_dir.mkdir(parents=True, exist_ok=True)
         fake_output = working_dir / "recording.mkv"
         fake_output.write_bytes(b"fake mkv data" * 1000)

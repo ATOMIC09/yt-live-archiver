@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import tempfile
 from pathlib import Path
 
@@ -10,7 +9,6 @@ import pytest
 import yaml
 
 from yt_live_archiver.config import AppConfig, ConfigError, load_config
-
 
 MINIMAL_VALID_CONFIG = {
     "channels": [

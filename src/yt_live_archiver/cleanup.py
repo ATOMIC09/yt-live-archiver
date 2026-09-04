@@ -7,7 +7,6 @@ All conditions must be met; when uncertain, keeps the file.
 
 from __future__ import annotations
 
-import logging
 from pathlib import Path
 
 from yt_live_archiver.config import AppConfig

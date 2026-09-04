@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import logging
 import os
 import shutil
 import signal
@@ -33,7 +32,6 @@ from yt_live_archiver.monitor import MonitorLoop
 from yt_live_archiver.processor import Processor
 from yt_live_archiver.recorder import Recorder
 from yt_live_archiver.recovery import RecoveryManager
-
 
 logger = get_logger(__name__)
 

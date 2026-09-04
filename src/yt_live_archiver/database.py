@@ -9,10 +9,10 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+from collections.abc import Generator
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Generator, Optional
 
 from yt_live_archiver.models import Recording, RecordingStatus
 
@@ -57,7 +57,7 @@ class Database:
     # ------------------------------------------------------------------
 
     def _now(self) -> str:
-        return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     def create_recording(self, recording: Recording) -> Recording:
         """Insert a new recording record and return it with the assigned id."""
@@ -91,7 +91,7 @@ class Database:
             recording.id = cur.lastrowid
         return recording
 
-    def get_by_video_id(self, youtube_video_id: str) -> Optional[Recording]:
+    def get_by_video_id(self, youtube_video_id: str) -> Recording | None:
         """Return a Recording by YouTube video ID, or None."""
         with self._conn() as conn:
             row = conn.execute(
@@ -101,7 +101,7 @@ class Database:
             return None
         return self._row_to_recording(row)
 
-    def get_by_id(self, recording_id: int) -> Optional[Recording]:
+    def get_by_id(self, recording_id: int) -> Recording | None:
         """Return a Recording by primary key, or None."""
         with self._conn() as conn:
             row = conn.execute(

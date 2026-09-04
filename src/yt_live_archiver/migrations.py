@@ -11,9 +11,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
-from contextlib import contextmanager
-from pathlib import Path
-from typing import Callable, Generator
+from collections.abc import Callable
 
 from yt_live_archiver.database import SCHEMA_VERSION
 

@@ -6,13 +6,11 @@ All status values live here. Nothing else should define status strings.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import datetime
-from enum import Enum
-from typing import Optional
+from dataclasses import dataclass
+from enum import StrEnum
 
 
-class RecordingStatus(str, Enum):
+class RecordingStatus(StrEnum):
     """All valid states of a recording job.
 
     Normal flow:
@@ -74,7 +72,7 @@ class Recording:
     """Represents one recording job and all its associated state."""
 
     # Identity
-    id: Optional[int] = None
+    id: int | None = None
     youtube_video_id: str = ""
     channel_id: str = ""
     channel_name: str = ""
@@ -86,28 +84,28 @@ class Recording:
     status: RecordingStatus = RecordingStatus.DISCOVERED
 
     # Timestamps (ISO-8601 strings, UTC)
-    detected_at: Optional[str] = None
-    started_at: Optional[str] = None
-    ended_at: Optional[str] = None
+    detected_at: str | None = None
+    started_at: str | None = None
+    ended_at: str | None = None
 
     # Local file info
-    local_path: Optional[str] = None
+    local_path: str | None = None
     local_size_bytes: int = 0
 
     # Media metadata
-    duration_seconds: Optional[float] = None
-    container: Optional[str] = None
-    video_codec: Optional[str] = None
-    audio_codec: Optional[str] = None
-    width: Optional[int] = None
-    height: Optional[int] = None
-    fps: Optional[float] = None
-    video_bitrate: Optional[int] = None
-    audio_bitrate: Optional[int] = None
+    duration_seconds: float | None = None
+    container: str | None = None
+    video_codec: str | None = None
+    audio_codec: str | None = None
+    width: int | None = None
+    height: int | None = None
+    fps: float | None = None
+    video_bitrate: int | None = None
+    audio_bitrate: int | None = None
 
     # Google Drive
-    drive_file_id: Optional[str] = None
-    drive_folder_id: Optional[str] = None
+    drive_file_id: str | None = None
+    drive_folder_id: str | None = None
     drive_size_bytes: int = 0
 
     # Verification flags
@@ -122,12 +120,12 @@ class Recording:
     webhook_attempts: int = 0
 
     # Error tracking
-    last_error: Optional[str] = None
-    last_error_at: Optional[str] = None
+    last_error: str | None = None
+    last_error_at: str | None = None
 
     # Created / updated
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
+    created_at: str | None = None
+    updated_at: str | None = None
 
     def can_delete_local(self, require_webhook: bool = True) -> bool:
         """Return True only when all safety conditions are satisfied."""

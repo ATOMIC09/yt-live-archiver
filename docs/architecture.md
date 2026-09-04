@@ -106,7 +106,7 @@ Monitors run concurrently. Each recording pipeline runs as an asyncio Task. Bloc
 
 ## Recovery Model
 
-On startup, `RecoveryManager.reconcile_all()` scans all non-terminal recordings and determines the correct re-entry point by comparing:
+On startup, `CrashRecovery.reconcile_all()` scans all non-terminal recordings and determines the correct re-entry point by comparing:
 
 1. Database state
 2. Filesystem state (file exists? size?)

@@ -1,136 +1,86 @@
-# Troubleshooting
+# Troubleshooting Guide
 
-## Container won't start
-
-### Check logs
-```bash
-docker compose logs yt-live-archiver
-```
-
-### Config validation
-```bash
-docker compose run --rm yt-live-archiver yt-live-archiver --check-config
-```
-
-### Dependency check
-```bash
-docker compose run --rm yt-live-archiver yt-live-archiver --check-deps
-```
+This guide covers common issues and resolutions for `yt-live-archiver`.
 
 ---
 
-## "Configuration file not found"
+## 1. Google Drive Issues
 
-Make sure your config is mounted correctly:
-```yaml
-volumes:
-  - ./config:/config:ro
-```
+### "The user's Drive storage quota has been exceeded" (HTTP 403)
 
-And the file exists:
-```bash
-ls ./config/config.yaml
-```
+- **Cause**: You are using a **Service Account** with a personal Google account (`@gmail.com`). Free or personal Google Drive accounts allocate 0 bytes of storage to external service accounts.
+- **Fix**: Switch to **OAuth 2.0 user credentials**. Run the setup wizard (`scripts/setup.sh`) or `scripts/auth_gdrive.py` and select **Personal Google Account**. This uploads using your personal Google Drive storage.
 
----
+### "Access blocked: yt-live-archiver has not completed the Google verification process"
 
-## "No channels configured"
+- **Cause**: Your OAuth consent screen in Google Cloud Console is in "Testing" status, and your email address is not listed as an authorized test user.
+- **Fix**:
+  1. Go to [Google Cloud Console → OAuth consent screen](https://console.cloud.google.com/apis/credentials/consent).
+  2. Scroll down to the **Test users** section.
+  3. Click **Add Users** and enter your Google account email address.
+  4. Click **Save** and retry authorization.
 
-Check your `config.yaml` has at least one channel under `channels:`:
-```yaml
-channels:
-  - id: nasa
-    name: NASA
-    url: https://www.youtube.com/@NASA/live
-    enabled: true
-```
+### "Unable to connect" / "This site can't be reached" during authorization
+
+- **Cause**: When authorizing on a remote headless server over SSH, Google redirects your laptop's browser to `http://localhost:8085/?code=...`. Because the local webserver is running on your remote machine (not your laptop), your laptop cannot connect to `localhost:8085`.
+- **Fix**: **This is completely normal!** Do not close the tab. Look at your browser's address bar, copy the entire URL (or just the text after `code=`), and paste it into the terminal prompt.
 
 ---
 
-## Channel not detecting live streams
+## 2. Webhook Issues
 
-1. Check if the channel is actually live by visiting the URL in a browser
-2. Check yt-dlp can access the channel:
-   ```bash
-   docker compose exec yt-live-archiver yt-dlp --no-warnings --quiet --dump-json --no-playlist "https://www.youtube.com/@NASA/live"
-   ```
-3. Check for rate limiting — increase `poll_interval_seconds`
+### Discord returns HTTP 400 Bad Request ("Cannot send an empty message")
 
----
-
-## Google Drive upload fails
-
-### "credentials file not found"
-```bash
-ls ./credentials/google-credentials.json
-```
-
-Ensure the credentials are mounted:
-```yaml
-volumes:
-  - ./credentials:/credentials:ro
-```
-
-### "permission denied" on Drive
-- The service account email must have Editor/Contributor access to the target folder
-- See [Google Drive setup guide](google-drive.md)
-
-### Upload stuck / slow
-- Check network connectivity from the container
-- Try reducing `chunk_size_mb` to 16 for unstable connections
+- **Cause**: Discord requires either a top-level text `content` or a valid `embeds` array.
+- **Fix**: Make sure you are running `v1.0.1` or newer. `v1.0.1` structures the payload with rich embeds including thumbnail image and code-formatted fields.
+- **Testing**: You can test your Discord webhook using curl:
+  ```bash
+  curl -H "Content-Type: application/json" -X POST -d '{"content":"Test from yt-live-archiver"}' "YOUR_DISCORD_WEBHOOK_URL"
+  ```
 
 ---
 
-## Webhook not sending
+## 3. YouTube Stream Detection & Recording Issues
 
-1. Check `webhook.enabled: true` and `webhook.url` is set
-2. Test the URL manually:
-   ```bash
-   curl -X POST "YOUR_WEBHOOK_URL" -H "Content-Type: application/json" -d '{"test": true}'
-   ```
-3. Check logs for `webhook_retryable_error` or `webhook_permanent_failure`
+### Stream is live on YouTube, but `yt-live-archiver` is not recording
 
----
+- **Check 1: Was it already recorded?**
+  The archiver skips streams that already exist in `data/archive.db`. Check the logs for:
+  `Already have a record for this video, skipping`
+  If you want to re-record it, delete the record from SQLite (see [Operations Guide](operations.md#resetting--re-testing-a-live-stream)).
 
-## Recording stuck in UPLOADING after restart
+- **Check 2: Channel URL format**
+  Ensure the channel URL in `config/config.yaml` points to `/live`:
+  ```yaml
+  url: https://www.youtube.com/@ChannelName/live
+  ```
 
-The recovery system should handle this automatically. If needed:
-```bash
-docker compose exec yt-live-archiver yt-live-archiver --recover
-```
+- **Check 3: Scheduled stream vs Active live broadcast**
+  If a stream is scheduled but has not started broadcasting video fragments, yt-dlp will wait up to `wait_for_video_seconds` (default: 300s) before timing out.
 
----
+### Outdated `yt-dlp` cipher errors
 
-## Disk full
-
-Failed recordings accumulate in `/data/failed/`. They are never auto-deleted.
+YouTube frequently updates internal player APIs, which can temporarily break stream extraction in older `yt-dlp` releases.
+To update `yt-dlp` inside your running container without waiting for a new image build:
 
 ```bash
-# See what's there
-du -sh ./data/failed/
-
-# Manually remove old failed recordings (after inspection)
-rm -rf ./data/failed/channelname/
+sudo docker compose exec yt-live-archiver pip install --upgrade yt-dlp
+sudo docker compose restart
 ```
 
 ---
 
-## Increasing log verbosity
+## 4. Verification Failures
 
-Set in your `.env`:
-```
-LOG_LEVEL=DEBUG
-```
+### Recordings moving to `data/failed/`
 
-Then restart:
+When a recording finishes, `ffprobe` validates the container, audio, and video streams. If a stream was interrupted prematurely (e.g. fewer than 30 seconds) or lacks a video track:
+1. The recording is flagged as `VERIFICATION_FAILED`.
+2. The file is moved to `data/failed/<channel>/<video_id>/`.
+3. The archiver does **not** upload corrupt files to Google Drive.
+
+Inspect the failure reason in logs:
+
 ```bash
-docker compose up -d
+sudo docker compose logs | grep "verification_failed"
 ```
-
----
-
-## Getting help
-
-1. Check the logs: `docker compose logs -f`
-2. Check the database: `sqlite3 ./data/archive.db "SELECT * FROM recordings ORDER BY updated_at DESC LIMIT 5;"`
-3. Open an issue at https://github.com/ATOMIC09/yt-live-archiver/issues

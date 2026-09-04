@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from yt_live_archiver.models import Recording, RecordingStatus
-from yt_live_archiver.state_machine import InvalidTransitionError, StateMachine, state_machine
+from yt_live_archiver.state_machine import InvalidTransitionError, StateMachine
 
 
 class TestStateMachine:

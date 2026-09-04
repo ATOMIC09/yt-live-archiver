@@ -3,14 +3,10 @@
 from __future__ import annotations
 
 import json
-import tempfile
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from yt_live_archiver.config import VerificationConfig
-from yt_live_archiver.media import MediaVerifier, VerificationResult
+from yt_live_archiver.media import MediaVerifier
 
 
 def make_config(

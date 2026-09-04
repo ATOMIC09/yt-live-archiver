@@ -12,17 +12,13 @@ Responsibilities:
 
 from __future__ import annotations
 
-import asyncio
-import logging
-import os
 import subprocess
 import threading
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
-from yt_live_archiver.config import AppConfig, RecordingConfig
+from yt_live_archiver.config import AppConfig
 from yt_live_archiver.logging_config import get_logger
 from yt_live_archiver.models import Recording
 from yt_live_archiver.utils import ensure_dir
@@ -36,10 +32,10 @@ class RecordingResult:
 
     success: bool
     exit_code: int
-    output_path: Optional[Path]
+    output_path: Path | None
     started_at: str
     ended_at: str
-    error_message: Optional[str] = None
+    error_message: str | None = None
     stderr_output: str = ""
 
 
@@ -96,7 +92,11 @@ class Recorder:
 
     def _working_path(self, recording: Recording) -> Path:
         """Return the working directory for this recording."""
-        return Path(self.config.recording.working_dir) / recording.channel_id / recording.youtube_video_id
+        return (
+            Path(self.config.recording.working_dir)
+            / recording.channel_id
+            / recording.youtube_video_id
+        )
 
     def _output_template(self, recording: Recording) -> Path:
         """Return the yt-dlp output path (without extension — yt-dlp adds it)."""
@@ -107,18 +107,20 @@ class Recorder:
 
         Blocks until yt-dlp exits (normal stream end, error, or external kill).
         """
-        log = get_logger(__name__, channel=recording.channel_id, video_id=recording.youtube_video_id)
+        log = get_logger(
+            __name__,
+            channel=recording.channel_id,
+            video_id=recording.youtube_video_id,
+        )
 
         working_dir = self._working_path(recording)
         ensure_dir(working_dir)
 
         output_template = self._output_template(recording)
-        expected_output = working_dir / f"recording.{self.config.recording.container}"
-
         cmd = self._build_command(recording, output_template)
         log.info("recording_starting", cmd=" ".join(cmd))
 
-        started_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        started_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         stderr_lines: list[str] = []
 
         try:
@@ -158,7 +160,7 @@ class Recorder:
                 exit_code=-1,
                 output_path=None,
                 started_at=started_at,
-                ended_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                ended_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 error_message="yt-dlp not found in PATH",
             )
         except Exception as exc:
@@ -168,14 +170,14 @@ class Recorder:
                 exit_code=-1,
                 output_path=None,
                 started_at=started_at,
-                ended_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                ended_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 error_message=str(exc),
             )
         finally:
             with self._lock:
                 self._active_processes.pop(recording.youtube_video_id, None)
 
-        ended_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        ended_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         exit_code = proc.returncode
         stderr_text = "\n".join(stderr_lines[-50:])  # Keep last 50 lines
 
@@ -253,7 +255,7 @@ class Recorder:
             stderr_output=stderr_text,
         )
 
-    def _find_output_file(self, working_dir: Path) -> Optional[Path]:
+    def _find_output_file(self, working_dir: Path) -> Path | None:
         """Search working_dir for a media file produced by yt-dlp."""
         extensions = {".mkv", ".mp4", ".webm", ".ts", ".m4a", ".ogg"}
         candidates: list[Path] = []

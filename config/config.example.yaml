@@ -42,7 +42,7 @@ google_drive:
   # Set to true to upload completed recordings to Google Drive
   enabled: false
   # Path to credentials JSON inside the container:
-  # - For Personal Google Accounts (e.g. Google One 5TB): Use OAuth token JSON (generated via scripts/auth_gdrive.py)
+  # - For Personal Google Accounts (@gmail.com): Use OAuth token JSON (generated via scripts/auth_gdrive.py or setup wizard)
   # - For Google Workspace: Use Service Account credentials JSON or OAuth token JSON
   credentials_file: /config/token.json
   # ID of the Shared Drive (Google Workspace only; leave empty for personal Drive)

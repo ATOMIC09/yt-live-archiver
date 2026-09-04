@@ -2,11 +2,7 @@
 
 from __future__ import annotations
 
-import tempfile
-from pathlib import Path
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from yt_live_archiver.cleanup import Cleanup
 from yt_live_archiver.models import Recording, RecordingStatus
@@ -14,10 +10,6 @@ from yt_live_archiver.models import Recording, RecordingStatus
 
 def make_config(require_webhook: bool = True, drive_enabled: bool = True):
     """Build a minimal config mock."""
-    from yt_live_archiver.config import (
-        AppConfig, CleanupConfig, GoogleDriveConfig, ProcessingConfig,
-        RecordingConfig, RetryConfig
-    )
     config = MagicMock()
     config.cleanup.require_webhook = require_webhook
     config.google_drive.enabled = drive_enabled
@@ -36,7 +28,9 @@ def make_db():
     return db
 
 
-def make_recording(local_path: str, status: RecordingStatus = RecordingStatus.UPLOADED) -> Recording:
+def make_recording(
+    local_path: str, status: RecordingStatus = RecordingStatus.UPLOADED
+) -> Recording:
     r = Recording()
     r.id = 1
     r.youtube_video_id = "testvidid"

@@ -11,10 +11,8 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 import yaml
-
 
 # ---------------------------------------------------------------------------
 # Sub-configuration dataclasses
@@ -114,7 +112,7 @@ class AppConfig:
 _DEFAULT_CONFIG_PATH = "/config/config.yaml"
 
 
-def load_config(config_path: Optional[str] = None) -> AppConfig:
+def load_config(config_path: str | None = None) -> AppConfig:
     """Load and validate configuration from a YAML file.
 
     Falls back to environment variables for the config path.

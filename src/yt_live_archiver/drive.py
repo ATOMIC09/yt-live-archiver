@@ -10,14 +10,9 @@ Supports Shared Drives.
 
 from __future__ import annotations
 
-import hashlib
-import io
 import json
-import logging
-import os
 import time
 from pathlib import Path
-from typing import Optional
 
 from google.oauth2 import service_account
 from google.oauth2.credentials import Credentials
@@ -266,7 +261,9 @@ class DriveClient:
                     ) from exc
             except Exception as exc:
                 if attempt > 10:
-                    raise DriveUploadError(f"Upload failed after {attempt} attempts: {exc}") from exc
+                    raise DriveUploadError(
+                        f"Upload failed after {attempt} attempts: {exc}"
+                    ) from exc
                 log.warning(
                     "drive_upload_error_retrying",
                     error=str(exc),
@@ -294,7 +291,7 @@ class DriveClient:
             folder_id=target_folder_id,
         )
 
-    def get_file(self, file_id: str) -> Optional[RemoteFileInfo]:
+    def get_file(self, file_id: str) -> RemoteFileInfo | None:
         """Retrieve metadata for a Drive file by ID.
 
         Returns None if the file does not exist.

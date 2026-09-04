@@ -26,6 +26,13 @@ services:
       TZ: UTC
       LOG_LEVEL: INFO
 
+    healthcheck:
+      test: ["CMD", "yt-live-archiver", "--healthcheck"]
+      interval: 30s
+      timeout: 10s
+      start_period: 15s
+      retries: 3
+
     # Resource limits (adjust as needed)
     # deploy:
     #   resources:

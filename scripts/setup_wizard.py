@@ -4,7 +4,7 @@ Interactive Setup Wizard for yt-live-archiver.
 
 Configures:
 1. Monitored YouTube Channels (supports adding multiple channels).
-2. Google Drive upload (Personal Google One OAuth vs Workspace Service Account,
+2. Google Drive upload (Personal Google Account OAuth vs Workspace Service Account,
    in-line OAuth flow, folder ID).
 3. Discord / Slack webhook notifications.
 4. Auto-writes configuration to config/config.yaml and .env.
@@ -159,8 +159,8 @@ def configure_google_drive(install_dir: Path) -> dict:
         return {"enabled": False}
 
     print("\nSelect your Google account type:")
-    print("  [1] Personal Google Account (Google One 5TB / @gmail.com) [RECOMMENDED]")
-    print("      -> Uses OAuth 2.0 user login. Uploads use your personal 5TB quota.")
+    print("  [1] Personal Google Account (@gmail.com / OAuth 2.0) [RECOMMENDED]")
+    print("      -> Uses OAuth 2.0 user login. Uploads directly to your Google Drive.")
     print("  [2] Google Workspace (Business / Enterprise / School)")
     print("      -> Uses a Service Account with Shared Drives (Team Drives).")
     choice = prompt_text("Enter choice [1 or 2]", default="1")
@@ -273,7 +273,7 @@ def configure_google_drive(install_dir: Path) -> dict:
         print("=" * 76)
         print("1. Open the following URL in any web browser:")
         print(f"\n   {auth_url}\n")
-        print("2. Log in with your personal Google account (with 5TB).")
+        print("2. Log in with your Google account.")
         print("3. Click 'Continue' / 'Allow'.")
         print("   (If warned 'Google hasn't verified this app',")
         print("    click 'Advanced' -> 'Go to yt-live-archiver')")

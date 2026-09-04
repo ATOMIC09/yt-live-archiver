@@ -3,8 +3,7 @@
 Google Drive OAuth 2.0 Token Generator for yt-live-archiver.
 
 Generates an authorized user `token.json` file for personal Google Drive accounts
-(such as Google One 5TB) that works seamlessly on both local machines and
-remote headless servers (over SSH).
+that works seamlessly on both local machines and remote headless servers (over SSH).
 
 Usage:
     python auth_gdrive.py
@@ -209,7 +208,7 @@ def main() -> None:
     print("=" * 72)
     print("\n1. Open the following URL in any web browser:")
     print(f"\n   {auth_url}\n")
-    print("2. Log in with your Google account (e.g., your personal 5TB Google One account).")
+    print("2. Log in with your Google account.")
     print("3. Click 'Continue' / 'Allow'.")
     print("   (If warned 'Google hasn't verified this app',")
     print("    click 'Advanced' -> 'Go to yt-live-archiver')\n")
@@ -293,7 +292,7 @@ def main() -> None:
     print("   google_drive:")
     print("     enabled: true")
     print(f"     credentials_file: {args.output}")
-    print('     folder_id: "YOUR_FOLDER_ID"  # Folder in your 5TB Google Drive')
+    print('     folder_id: "YOUR_FOLDER_ID"  # Folder in your Google Drive')
     print('     shared_drive_id: ""          # Leave empty for personal drive')
     print("=" * 72 + "\n")
 

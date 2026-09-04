@@ -7,7 +7,7 @@ All state changes MUST go through StateMachine.transition().
 
 from __future__ import annotations
 
-from yt_live_archiver.models import RecordingStatus
+from yt_live_archiver.models import Recording, RecordingStatus
 
 # ---------------------------------------------------------------------------
 # Allowed transitions
@@ -78,7 +78,7 @@ class StateMachine:
                 f"{', '.join(s.value for s in allowed) or 'none'}"
             )
 
-    def transition(self, recording: "Recording", to_status: RecordingStatus) -> None:  # noqa: F821
+    def transition(self, recording: Recording, to_status: RecordingStatus) -> None:
         """Validate and apply a state transition to *recording* in-place.
 
         Raises InvalidTransitionError if the transition is not allowed.

@@ -1,28 +1,53 @@
 # yt-live-archiver
 
-Automated YouTube livestream archiver with Google Drive upload and webhook notifications.
-
-**yt-live-archiver** continuously monitors configured YouTube channels, records livestreams using `yt-dlp`, validates recordings with `ffprobe`/`ffmpeg`, uploads to Google Drive with resumable transfers, sends a configurable webhook notification, and safely deletes the local copy only after all steps have been verified.
+Automated, resilient YouTube livestream archiver with Google Drive sync and rich Discord notifications.
 
 [![CI](https://github.com/ATOMIC09/yt-live-archiver/actions/workflows/ci.yml/badge.svg)](https://github.com/ATOMIC09/yt-live-archiver/actions/workflows/ci.yml)
-[![Docker Image](https://ghcr.io/atomic09/yt-live-archiver)](https://github.com/ATOMIC09/yt-live-archiver/pkgs/container/yt-live-archiver)
+[![Docker Image](https://img.shields.io/badge/ghcr.io-yt--live--archiver-blue?logo=docker)](https://github.com/ATOMIC09/yt-live-archiver/pkgs/container/yt-live-archiver)
+[![Release](https://img.shields.io/github/v/release/ATOMIC09/yt-live-archiver?color=green)](https://github.com/ATOMIC09/yt-live-archiver/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ---
 
-## Features
-
-- 🎥 **Automatic detection** — polls channels every 30 seconds (configurable)
-- 📼 **Live recording** — uses `yt-dlp` with HLS, retries, and fragment recovery
-- 🔍 **Media verification** — `ffprobe` + FFmpeg decode test before upload
-- ☁️ **Google Drive upload** — resumable transfers with retry and verification
-- 🔔 **Webhook notifications** — Discord/Slack/custom with retry and idempotency
-- 🛡️ **Data safety** — never deletes local copy until remote is verified
-- ♻️ **Crash recovery** — resumes automatically after container restart
-- 🐳 **Docker-first** — one container, no host dependencies required
+**yt-live-archiver** is a self-contained, unattended Docker daemon that continuously monitors your favorite YouTube channels, records livestreams using `yt-dlp`, validates media integrity via `ffprobe`/`ffmpeg`, uploads recordings into channel-specific folders on Google Drive, sends rich Discord embed alerts, and safely deletes local files only when all steps succeed.
 
 ---
 
-## Quick Start
+## ✨ Features
+
+- 🎥 **Multi-Channel Monitoring** — Continuously polls YouTube channels with configurable intervals.
+- ⚡ **Resilient Stream Recording** — Powered by `yt-dlp` with HLS recovery, retry logic, and live-from-start capture.
+- 🔍 **Strict Media Verification** — `ffprobe` stream validation and `ffmpeg` decode integrity testing before upload.
+- 📁 **Organized Google Drive Sync** — Automatically creates subfolders per channel name (e.g. `NASA/`, `SpaceX/`) with resumable chunked transfers.
+- 🔑 **Universal Account Support** — Works with **Personal Google Accounts (OAuth 2.0)** and **Google Workspace (Service Accounts & Shared Drives)**.
+- 🏷️ **Clean Filenames** — Files are saved cleanly using the sanitized stream title (`{title}.mkv`).
+- 🔔 **Rich Discord Webhook Embeds** — Sleek notification cards featuring high-res video preview thumbnails and code-formatted stream metrics.
+- 🛡️ **Zero-Data-Loss Guarantee** — Never deletes a local recording until the remote file exists and its size is verified.
+- 🔄 **Self-Healing Crash Recovery** — Automatically reconciles in-flight jobs after server reboots or container restarts.
+- 🐳 **Docker-First** — Pure single-container setup; no host Python, FFmpeg, or yt-dlp dependencies needed.
+
+---
+
+## ⚡ Quick Start (60 Seconds)
+
+The easiest way to get started on any Linux server (e.g. Ubuntu / Debian) is using the interactive setup wizard:
+
+```bash
+bash <(curl -sSL https://raw.githubusercontent.com/ATOMIC09/yt-live-archiver/master/scripts/setup.sh)
+```
+
+The interactive wizard will:
+1. Create all necessary data and configuration directories.
+2. Interactively add your YouTube channels.
+3. Automatically configure Google Drive (Personal Account OAuth 2.0 or Workspace Service Account).
+4. Configure your Discord or Slack webhook URL.
+5. Launch the Docker container in the background.
+
+---
+
+## 🐳 Manual Setup (Docker Compose)
+
+If you prefer to configure everything manually:
 
 ### 1. Clone the repository
 
@@ -34,10 +59,11 @@ cd yt-live-archiver
 ### 2. Create host directories
 
 ```bash
-mkdir -p ./{data,config,credentials}
+mkdir -p ./{data,config}
+mkdir -p ./data/{working,failed,metadata}
 ```
 
-### 3. Configure
+### 3. Set up configuration
 
 ```bash
 cp config/config.example.yaml ./config/config.yaml
@@ -55,115 +81,111 @@ channels:
 
 google_drive:
   enabled: true
-  folder_id: "your_google_drive_folder_id"
+  credentials_file: /config/token.json  # OAuth token or Service Account JSON
+  folder_id: "your_target_folder_id"   # Destination folder in Google Drive
 
 webhook:
   enabled: true
-  url: "https://discord.com/api/webhooks/YOUR_WEBHOOK"
+  url: "https://discord.com/api/webhooks/YOUR/WEBHOOK/URL"
 ```
 
-Edit `.env` with your webhook URL and any overrides.
+### 4. Authorize Google Drive
 
-### 4. Add Google Credentials
+- **Personal Google Account**: Run `python scripts/auth_gdrive.py` to generate `/config/token.json`.
+- **Google Workspace**: Place your `service-account.json` into `./config/token.json` and grant the service account Editor access to your Drive folder.
 
-Place your service account credentials file:
+*(See [Google Drive Setup Guide](docs/google-drive.md) for detailed step-by-step instructions.)*
 
-```bash
-cp /path/to/google-credentials.json ./credentials/google-credentials.json
-```
-
-See [Google Drive setup guide](docs/google-drive.md) for instructions.
-
-### 5. Start
+### 5. Launch
 
 ```bash
 docker compose up -d
-```
-
-### 6. Check logs
-
-```bash
 docker compose logs -f
 ```
 
 ---
 
-## Requirements (host)
+## 🔔 Webhook Preview
 
-- Docker Engine
-- Docker Compose
-- Persistent storage
-- Network access
-
-**The host does NOT need:** Python, yt-dlp, FFmpeg, or any Python packages.
-
----
-
-## Architecture
+When a live stream concludes, `yt-live-archiver` posts a Discord embed card:
 
 ```
-YouTube
-   │
-   ▼
-Live Monitor (poll every 30s)
-   │
-   ▼
-yt-dlp Recorder ──── /data/working/
-   │
-   ▼
-Media Verification (ffprobe + ffmpeg)
-   │
-   ▼
-Google Drive Upload (resumable)
-   │
-   ▼
-Remote Verification (size check)
-   │
-   ▼
-Webhook Notification
-   │
-   ▼
-Local Cleanup ──── /data/ (file deleted)
+┌──────────────────────────────────────────────────────────┐
+│ 🔴 Live Video from the International Space Station      │
+│ https://www.youtube.com/watch?v=M3HKLzjvKPc              │
+├──────────────────────────────────────────────────────────┤
+│ Channel      Duration     File Size                      │
+│ `NASA`       `02:15:30`   `2.4 GB`                       │
+│                                                          │
+│ Resolution                Codecs                         │
+│ `1920x1080 @ 30fps`       `vp9 / opus`                   │
+│                                                          │
+│ Started At                Ended At                       │
+│ `2026-09-04 17:13:00 UTC` `2026-09-04 19:28:30 UTC`     │
+│                                                          │
+│ Google Drive                                             │
+│ [Open in Google Drive](https://drive.google.com/...)     │
+├──────────────────────────────────────────────────────────┤
+│ [                     VIDEO THUMBNAIL                  ] │
+│ yt-live-archiver                                         │
+└──────────────────────────────────────────────────────────┘
 ```
 
-All state is persisted in `/data/archive.db` (SQLite). The container is disposable.
-
 ---
 
-## Data Safety Guarantee
+## 🛠️ Operations & Maintenance
 
-A local recording is **never deleted** unless all of the following are confirmed:
-
-1. ✅ `ffprobe` + decode test passed
-2. ✅ Google Drive file exists with matching size
-3. ✅ Webhook notification delivered (configurable)
-
-When any condition is uncertain → **keep the file**.
-
----
-
-## Upgrading
+### View live logs
 
 ```bash
-docker compose pull
-docker compose up -d
+sudo docker compose logs -f
 ```
 
-The new container automatically picks up your existing `/data/archive.db` and any interrupted jobs.
+### Add or remove channels
+
+Edit `config/config.yaml` and restart the container:
+
+```bash
+sudo nano config/config.yaml
+sudo docker compose restart
+```
+
+### Update to latest version
+
+```bash
+sudo docker compose pull
+sudo docker compose up -d
+```
+
+### Re-test a stream
+
+To force `yt-live-archiver` to re-record an active live stream that was previously archived:
+
+```bash
+# Delete the channel's past recordings from the SQLite database
+sudo docker compose exec yt-live-archiver python -c "
+import sqlite3
+conn = sqlite3.connect('/data/archive.db')
+conn.execute(\"DELETE FROM recordings WHERE channel_id = 'nasa'\")
+conn.commit()
+print('Reset complete')
+"
+sudo docker compose restart
+```
 
 ---
 
-## Documentation
+## 📚 Documentation
 
-- [Installation guide](docs/installation.md)
-- [Configuration reference](docs/configuration.md)
-- [Google Drive setup](docs/google-drive.md)
-- [Architecture](docs/architecture.md)
-- [Operations](docs/operations.md)
-- [Troubleshooting](docs/troubleshooting.md)
+- [Installation Guide](docs/installation.md) — Automated script & manual installation walkthroughs.
+- [Google Drive Setup](docs/google-drive.md) — Personal Account OAuth 2.0 & Workspace Service Account setups.
+- [Configuration Reference](docs/configuration.md) — Complete `config.yaml` schema and environment variables.
+- [Operations & Monitoring](docs/operations.md) — Maintenance, database queries, backups, and disk management.
+- [Troubleshooting](docs/troubleshooting.md) — Common error resolution (OAuth consent, quotas, permissions).
+- [Architecture](docs/architecture.md) — System architecture, state machine, and data safety guarantees.
 
 ---
 
-## License
+## 📄 License
 
-MIT License — see [LICENSE](LICENSE)
+MIT License — Copyright (c) 2026 ATOMIC09. See [LICENSE](LICENSE) for details.

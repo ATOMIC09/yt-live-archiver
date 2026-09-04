@@ -1,15 +1,35 @@
 # Installation Guide
 
+`yt-live-archiver` is packaged as a Docker container with zero host dependencies. You do **not** need Python, FFmpeg, or yt-dlp installed on your host system.
+
+---
+
 ## Prerequisites
 
-The host machine only needs:
+- **Docker Engine** (20.10 or newer)
+- **Docker Compose** (v2.0 or newer)
+- Persistent storage for recordings
+- Outbound internet access to YouTube and Google Drive
 
-- **Docker Engine** (20.10+)
-- **Docker Compose** (v2+)
-- Persistent storage (for `.`)
-- Network access to YouTube and Google
+---
 
-## Step-by-Step
+## Method 1: Interactive Setup Wizard (Recommended)
+
+The automated setup script prepares directory structures, asks you for channels and services interactively, configures Google Drive and webhooks, and boots Docker:
+
+```bash
+bash <(curl -sSL https://raw.githubusercontent.com/ATOMIC09/yt-live-archiver/master/scripts/setup.sh)
+```
+
+The script will guide you step-by-step through:
+1. Adding one or more YouTube channels.
+2. Setting up Google Drive (Personal Google Account OAuth 2.0 or Workspace Service Account).
+3. Setting up Discord or Slack webhook alerts.
+4. Launching the container.
+
+---
+
+## Method 2: Manual Installation via Docker Compose
 
 ### 1. Clone the repository
 
@@ -20,21 +40,22 @@ cd yt-live-archiver
 
 ### 2. Create host directories
 
+The container runs as non-root UID 1000:
+
 ```bash
-sudo mkdir -p ./{data,config,credentials}
-sudo chown -R $USER:$USER .
+mkdir -p ./{data,config}
+mkdir -p ./data/{working,failed,metadata}
+sudo chown -R 1000:1000 ./data
 ```
 
-### 3. Copy example files
+### 3. Prepare configuration files
 
 ```bash
 cp config/config.example.yaml ./config/config.yaml
 cp .env.example .env
 ```
 
-### 4. Configure channels and services
-
-Edit `./config/config.yaml`:
+Edit `config/config.yaml` to specify your channels:
 
 ```yaml
 channels:
@@ -42,59 +63,44 @@ channels:
     name: NASA
     url: https://www.youtube.com/@NASA/live
     enabled: true
+  - id: spacex
+    name: SpaceX
+    url: https://www.youtube.com/@SpaceX/live
+    enabled: true
+
+google_drive:
+  enabled: true
+  credentials_file: /config/token.json
+  folder_id: "YOUR_GOOGLE_DRIVE_FOLDER_ID"
+
+webhook:
+  enabled: true
+  url: "https://discord.com/api/webhooks/..."
 ```
 
-Add your Google Drive folder ID and webhook URL. See:
-- [Configuration Reference](configuration.md)
-- [Google Drive Setup](google-drive.md)
+### 4. Configure Google Drive credentials
 
-### 5. Add Google credentials
+- **For Personal Google Accounts**: Run `python scripts/auth_gdrive.py` and save output to `config/token.json`.
+- **For Google Workspace**: Copy your Service Account JSON key to `config/token.json`.
 
-```bash
-cp /path/to/service-account.json ./credentials/google-credentials.json
-chmod 600 ./credentials/google-credentials.json
-```
+*(See the [Google Drive Setup Guide](google-drive.md) for full instructions.)*
 
-### 6. Start the container
+### 5. Launch the container
 
 ```bash
 docker compose up -d
 ```
 
-### 7. Verify it's running
+### 6. Verify operation
+
+View real-time application logs:
 
 ```bash
 docker compose logs -f
+```
+
+Check container health:
+
+```bash
 docker compose ps
 ```
-
-You should see log lines like:
-```
-2026-09-04T10:00:00Z  INFO   app  app_starting  version=1.0.0
-2026-09-04T10:00:01Z  INFO   monitor  monitor_loop_started  channels=1
-```
-
-## Upgrading
-
-```bash
-docker compose pull
-docker compose up -d
-```
-
-The database and all recording state are preserved across upgrades.
-
-## Uninstalling
-
-```bash
-docker compose down
-```
-
-Your data in `./data/` is not deleted.
-
-## Optional: Setup Script
-
-```bash
-bash scripts/setup.sh
-```
-
-The script creates directories, copies example files, and starts Compose.

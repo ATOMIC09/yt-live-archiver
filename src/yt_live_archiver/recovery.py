@@ -12,19 +12,14 @@ Then continues processing from the safest valid point.
 
 from __future__ import annotations
 
-import logging
 from pathlib import Path
-from typing import Optional
 
 from yt_live_archiver.config import AppConfig
 from yt_live_archiver.database import Database
 from yt_live_archiver.drive import DriveClient, DriveError
 from yt_live_archiver.logging_config import get_logger
 from yt_live_archiver.models import Recording, RecordingStatus
-from yt_live_archiver.state_machine import state_machine
 from yt_live_archiver.utils import file_size_bytes
-
-logger = get_logger(__name__)
 
 # States that need reconciliation on startup
 _RECOVERABLE_STATES = {
@@ -75,7 +70,11 @@ class RecoveryManager:
         self._log.info("recovery_candidates_found", count=len(candidates))
         results: list[RecoveryResult] = []
 
-        drive_client = DriveClient(self.config.google_drive) if self.config.google_drive.enabled else None
+        drive_client = (
+            DriveClient(self.config.google_drive)
+            if self.config.google_drive.enabled
+            else None
+        )
 
         for recording in candidates:
             result = self._reconcile_one(recording, drive_client)
@@ -84,7 +83,9 @@ class RecoveryManager:
         self._log.info("recovery_complete", processed=len(results))
         return results
 
-    def _reconcile_one(self, recording: Recording, drive_client: Optional[DriveClient]) -> RecoveryResult:
+    def _reconcile_one(
+        self, recording: Recording, drive_client: DriveClient | None
+    ) -> RecoveryResult:
         """Determine the correct next state for *recording* and update the DB."""
         log = get_logger(
             __name__,
@@ -153,14 +154,20 @@ class RecoveryManager:
                 recording.status = RecordingStatus.VERIFYING
                 recording.local_size_bytes = local_size
                 self.db.update_recording(recording)
-                return RecoveryResult(recording, "re_verify", "File found after interrupted recording")
+                return RecoveryResult(
+                    recording, "re_verify", "File found after interrupted recording"
+                )
             else:
                 # No file — mark as failed
                 log.warning("recovery_action: no_file_after_recording -> RECORDING_FAILED")
                 recording.status = RecordingStatus.RECORDING_FAILED
-                self.db.set_error(recording, "Recording interrupted: no output file found on restart")
+                self.db.set_error(
+                    recording, "Recording interrupted: no output file found on restart"
+                )
                 self.db.update_recording(recording)
-                return RecoveryResult(recording, "mark_failed", "No file found after interrupted recording")
+                return RecoveryResult(
+                    recording, "mark_failed", "No file found after interrupted recording"
+                )
 
         if recording.status == RecordingStatus.VERIFYING:
             if local_exists and local_size > 0:
@@ -169,7 +176,9 @@ class RecoveryManager:
             else:
                 log.warning("recovery_action: no_file_during_verification -> VERIFICATION_FAILED")
                 recording.status = RecordingStatus.VERIFICATION_FAILED
-                self.db.set_error(recording, "Verification interrupted: local file missing on restart")
+                self.db.set_error(
+                    recording, "Verification interrupted: local file missing on restart"
+                )
                 self.db.update_recording(recording)
                 return RecoveryResult(recording, "mark_failed", "File missing during verification")
 
@@ -212,7 +221,9 @@ class RecoveryManager:
                                   RecordingStatus.NOTIFICATION_FAILED}:
             if recording.webhook_sent:
                 log.info("recovery_action: webhook_already_sent -> cleanup")
-                return RecoveryResult(recording, "cleanup", "Webhook already sent, proceed to cleanup")
+                return RecoveryResult(
+                    recording, "cleanup", "Webhook already sent, proceed to cleanup"
+                )
             else:
                 log.info("recovery_action: retry_webhook")
                 recording.status = RecordingStatus.UPLOADED

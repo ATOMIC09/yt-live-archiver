@@ -9,8 +9,6 @@ from __future__ import annotations
 
 import logging
 import sys
-from typing import Optional
-
 
 # ---------------------------------------------------------------------------
 # Formatter
@@ -86,7 +84,7 @@ class BoundLogger:
         self._logger = logger
         self._ctx = dict(ctx)
 
-    def bind(self, **extra: object) -> "BoundLogger":
+    def bind(self, **extra: object) -> BoundLogger:
         """Return a new BoundLogger with additional context."""
         merged = {**self._ctx, **extra}
         return BoundLogger(self._logger, **merged)

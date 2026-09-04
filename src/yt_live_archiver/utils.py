@@ -14,9 +14,8 @@ import random
 import re
 import time
 import unicodedata
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
-
 
 # ---------------------------------------------------------------------------
 # Filename sanitization
@@ -117,11 +116,6 @@ def exponential_backoff_delays(
             actual = delay * (0.5 + random.random())  # ± 50% jitter
         yield min(actual, cap)
         delay = min(delay * multiplier, cap)
-
-
-def sleep_with_backoff(delays: Iterator[float]) -> None:
-    """Sleep for the next delay from a backoff iterator."""
-    time.sleep(next(delays))
 
 
 # ---------------------------------------------------------------------------
