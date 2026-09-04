@@ -70,17 +70,19 @@ fi
 echo "[3/4] Setup complete!"
 echo ""
 echo "Next steps:"
-echo "  1. Edit $INSTALL_DIR/config/config.yaml to add your channels"
-echo "  2. Add your Google credentials to $INSTALL_DIR/credentials/google-credentials.json"
-echo "  3. Edit .env to set WEBHOOK_URL and other settings"
-echo "  4. Run: docker compose up -d"
+echo "  1. REQUIRED: Edit $INSTALL_DIR/config/config.yaml and uncomment/add at least one channel."
+echo "  2. OPTIONAL: If using Google Drive, edit config.yaml to enable it and add credentials to $INSTALL_DIR/credentials/google-credentials.json"
+echo "  3. OPTIONAL: If using webhooks, edit $INSTALL_DIR/.env to set WEBHOOK_URL"
+echo "  4. Start the app: docker compose up -d"
 echo ""
 
-read -r -p "Start the container now? [y/N] " REPLY
+read -r -p "Start the container now? (Make sure you edit config.yaml first!) [y/N] " REPLY
 if [[ "$REPLY" =~ ^[Yy]$ ]]; then
     echo "[4/4] Starting container..."
     docker compose up -d
     echo ""
     echo "Container started. View logs with:"
     echo "  docker compose logs -f"
+    echo ""
+    echo "NOTE: If it is restarting, you likely need to configure a channel in config.yaml!"
 fi

@@ -76,6 +76,15 @@ class TestLoadConfig:
         finally:
             path.unlink()
 
+    def test_none_channels_raises(self):
+        data = {**MINIMAL_VALID_CONFIG, "channels": None}
+        path = write_config(data)
+        try:
+            with pytest.raises(ConfigError, match="No channels"):
+                load_config(str(path))
+        finally:
+            path.unlink()
+
     def test_channel_missing_id_raises(self):
         data = {
             **MINIMAL_VALID_CONFIG,

@@ -229,7 +229,7 @@ def _parse_config(raw: dict) -> AppConfig:
         cfg.retry.multiplier = float(rt.get("multiplier", cfg.retry.multiplier))
         cfg.retry.jitter = bool(rt.get("jitter", cfg.retry.jitter))
 
-    if "channels" in raw:
+    if raw.get("channels"):
         for ch in raw["channels"]:
             cfg.channels.append(
                 ChannelConfig(
