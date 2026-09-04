@@ -1,0 +1,56 @@
+# yt-live-archiver .gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+*.cover
+.tox/
+venv/
+.venv/
+env/
+
+# Secrets (never commit these)
+.env
+credentials/
+google-credentials.json
+*.json.bak
+
+# Data (never commit recordings or database)
+data/
+*.db
+*.mkv
+*.mp4
+*.webm
+*.ts
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+.docker/
+
+# Tests
+.pytest_cache/
+tests/__pycache__/
+tests/unit/__pycache__/
+tests/integration/__pycache__/
