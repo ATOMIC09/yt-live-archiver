@@ -139,14 +139,14 @@ class Recorder:
                     line = line.rstrip()
                     if line:
                         stderr_lines.append(line)
-                        log.debug("yt-dlp: %s", line)
+                        log.debug("yt-dlp_stderr", line=line)
 
             stderr_thread = threading.Thread(target=_read_stderr, daemon=True)
             stderr_thread.start()
 
             # Drain stdout too (avoid pipe buffer fill)
             for line in proc.stdout:  # type: ignore[union-attr]
-                log.debug("yt-dlp stdout: %s", line.rstrip())
+                log.debug("yt-dlp_stdout", line=line.rstrip())
 
             proc.wait()
             stderr_thread.join(timeout=5)

@@ -21,8 +21,6 @@ services:
       - ./data:/data
       # Configuration (read-only)
       - ./config:/config:ro
-      # Google credentials (read-only)
-      - ./credentials:/credentials:ro
 
     environment:
       TZ: UTC

@@ -103,6 +103,18 @@ class RecoveryManager:
             local_exists = p.exists() and p.is_file()
             if local_exists:
                 local_size = file_size_bytes(p)
+        elif recording.status in {RecordingStatus.RECORDING, RecordingStatus.FINALIZING}:
+            # During recording, local_path is None, so search the working directory
+            from yt_live_archiver.recorder import Recorder
+            recorder = Recorder(self.config)
+            working_dir = recorder._working_path(recording)
+            if working_dir.exists():
+                p = recorder._find_output_file(working_dir)
+                if p and p.exists() and p.is_file():
+                    local_exists = True
+                    local_size = file_size_bytes(p)
+                    # Update local_path so verification knows where to look!
+                    recording.local_path = str(p)
 
         # Check Drive state
         drive_exists = False

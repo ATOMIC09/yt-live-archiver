@@ -6,7 +6,6 @@
 #   cp .env.example .env
 #   # Edit .env with your settings
 #   cp config/config.example.yaml ./config/config.yaml
-#   # Add your Google credentials to ./credentials/
 #   docker compose up -d
 #
 # Build locally (development):
@@ -24,7 +23,6 @@ services:
     volumes:
       - ./data:/data
       - ./config:/config:ro
-      - ./credentials:/credentials:ro
 
     environment:
       TZ: UTC
@@ -50,7 +48,6 @@ services:
     volumes:
       - ./data:/data
       - ./config:/config:ro
-      - ./credentials:/credentials:ro
     environment:
       TZ: UTC
       LOG_LEVEL: DEBUG

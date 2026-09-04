@@ -63,6 +63,7 @@ class Uploader:
 
         if not self.config.google_drive.enabled:
             log.info("drive_upload_skipped_disabled")
+            state_machine.transition(recording, RecordingStatus.UPLOADING)
             # Mark as if uploaded so pipeline can continue
             recording.drive_verified = True
             recording.drive_file_id = "DISABLED"

@@ -42,7 +42,7 @@ google_drive:
   # Set to true to upload completed recordings to Google Drive
   enabled: false
   # Path to service account credentials JSON (mounted read-only)
-  credentials_file: /credentials/google-credentials.json
+  credentials_file: /config/credentials.json
   # ID of the Shared Drive (leave empty for personal Drive)
   shared_drive_id: ""
   # ID of the folder to upload recordings to (REQUIRED)

@@ -24,7 +24,7 @@ if ! docker compose version &> /dev/null; then
 fi
 
 echo "[1/4] Creating directories..."
-mkdir -p "$INSTALL_DIR"/{data,config,credentials}
+mkdir -p "$INSTALL_DIR"/{data,config}
 mkdir -p "$INSTALL_DIR"/data/{working,failed,metadata}
 
 # The Docker container runs as UID 1000. Give it ownership of the data dir.

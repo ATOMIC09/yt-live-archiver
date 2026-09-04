@@ -165,6 +165,8 @@ class Application:
         ]:
             Path(d).mkdir(parents=True, exist_ok=True)
 
+        self._active_tasks: set[asyncio.Task] = set()
+
         # Run startup recovery
         await self._run_recovery()
 
@@ -177,15 +179,19 @@ class Application:
             self._log.error("monitor_loop_crashed", error=str(exc))
             raise
 
+        # Wait for all background tasks to complete before exiting
+        if self._active_tasks:
+            self._log.info("waiting_for_background_tasks", count=len(self._active_tasks))
+            await asyncio.gather(*self._active_tasks, return_exceptions=True)
+
         self._log.info("application_stopped")
 
     async def _run_recovery(self) -> None:
-        """Run startup reconciliation and reprocess any recovered recordings."""
+        """Run startup reconciliation and dispatch background tasks for recovered recordings."""
         results = await asyncio.get_event_loop().run_in_executor(
             None, self._recovery.reconcile_all
         )
 
-        tasks = []
         for result in results:
             if result.action in {"re_verify", "upload", "webhook", "cleanup"}:
                 self._log.info(
@@ -197,10 +203,8 @@ class Application:
                     self._processor.reprocess_recording(result.recording),
                     name=f"recover-{result.recording.youtube_video_id}",
                 )
-                tasks.append(task)
-
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
+                self._active_tasks.add(task)
+                task.add_done_callback(self._active_tasks.discard)
 
     async def _on_live_detected(self, recording) -> None:
         """Callback when monitor detects a new live stream."""
@@ -216,13 +220,23 @@ class Application:
         recording.recording_attempts += 1
         self.db.update_recording(recording)
 
-        # Run recorder in executor (blocking)
-        result = await asyncio.get_event_loop().run_in_executor(
-            None, self._recorder.record, recording
+        # Dispatch background task so we do not block the monitor loop
+        task = asyncio.create_task(
+            self._record_and_process(recording),
+            name=f"record-{recording.youtube_video_id}"
         )
+        self._active_tasks.add(task)
+        task.add_done_callback(self._active_tasks.discard)
 
-        # Process result
-        await self._processor.handle_recording_result(recording, result)
+    async def _record_and_process(self, recording) -> None:
+        """Background task for recording and processing."""
+        try:
+            result = await asyncio.get_event_loop().run_in_executor(
+                None, self._recorder.record, recording
+            )
+            await self._processor.handle_recording_result(recording, result)
+        except Exception as exc:
+            self._log.error("recording_task_crashed", error=str(exc))
 
     def stop(self) -> None:
         """Signal the application to stop gracefully."""
@@ -327,8 +341,9 @@ def main() -> None:
         exit_code = run_healthcheck(config)
         sys.exit(exit_code)
 
-    # Run migrations
+    # Ensure database directory exists before connecting
     try:
+        Path(config.application.database).parent.mkdir(parents=True, exist_ok=True)
         run_migrations(config.application.database)
     except Exception as exc:
         logger.error(f"Database migration failed: {exc}")
