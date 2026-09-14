@@ -86,6 +86,8 @@ class AppConfig:
     require_video: bool = True
     require_audio: bool = True
     decode_test: bool = True
+    retries: int = 20
+    fragment_retries: int = 20
     google_drive: GoogleDriveConfig = field(default_factory=GoogleDriveConfig)
     webhook: WebhookConfig = field(default_factory=WebhookConfig)
 
@@ -215,6 +217,8 @@ def load_config() -> AppConfig:
         require_video=_env_bool("REQUIRE_VIDEO", True),
         require_audio=_env_bool("REQUIRE_AUDIO", True),
         decode_test=_env_bool("DECODE_TEST", True),
+        retries=_env_int("RETRIES", 20),
+        fragment_retries=_env_int("FRAGMENT_RETRIES", 20),
         google_drive=drive,
         webhook=webhook,
     )

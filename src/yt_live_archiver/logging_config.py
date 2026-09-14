@@ -37,9 +37,17 @@ def _format_ctx(record: logging.LogRecord) -> str:
 
 class _StructuredFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
-        base = super().format(record)
+        # Simplify logger name: yt_live_archiver.recorder -> recorder
+        name = record.name
+        if name.startswith("yt_live_archiver."):
+            name = name[len("yt_live_archiver."):]
+
+        asctime = self.formatTime(record, "%Y-%m-%d %H:%M:%S")
+        level = f"{record.levelname:<5}"
         ctx = _format_ctx(record)
-        return base + ctx
+        msg = record.getMessage()
+
+        return f"[{asctime}] {level} [{name}] {msg}{ctx}"
 
 
 # ---------------------------------------------------------------------------
@@ -53,7 +61,7 @@ def setup_logging(level: str = "INFO") -> None:
 
     handler = logging.StreamHandler(sys.stdout)
     handler.setLevel(numeric_level)
-    handler.setFormatter(_StructuredFormatter(fmt=_LOG_FORMAT, datefmt=_DATE_FORMAT))
+    handler.setFormatter(_StructuredFormatter())
     handler.addFilter(_ContextFilter())
 
     root = logging.getLogger()
@@ -62,7 +70,17 @@ def setup_logging(level: str = "INFO") -> None:
     root.addHandler(handler)
 
     # Suppress noisy third-party loggers
-    for name in ("googleapiclient", "google.auth", "urllib3", "httpx"):
+    for name in (
+        "googleapiclient",
+        "googleapiclient.discovery",
+        "googleapiclient.discovery_cache",
+        "google.auth",
+        "google.auth.transport",
+        "urllib3",
+        "httpx",
+        "httpcore",
+        "asyncio",
+    ):
         logging.getLogger(name).setLevel(logging.WARNING)
 
 

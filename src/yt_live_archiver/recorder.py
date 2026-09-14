@@ -63,8 +63,9 @@ class Recorder:
             "--merge-output-format", cfg.recording_container,
             "--remux-video", cfg.recording_container,
             "--hls-use-mpegts",
-            "--retries", "infinite",
-            "--fragment-retries", "infinite",
+            "--retries", str(cfg.retries),
+            "--fragment-retries", str(cfg.fragment_retries),
+            "--retry-sleep", "fragment:exp=1:20",
             "--socket-timeout", "30",
             "--add-metadata",
             "--no-part",
@@ -87,6 +88,7 @@ class Recorder:
         Blocks until yt-dlp exits. Merges multiple output segments if needed.
         """
         log = get_logger(__name__, channel=info.channel_id, video_id=info.video_id)
+        raw_log = get_logger(__name__)
 
         working_dir = self._working_path(info)
         ensure_dir(working_dir)
@@ -112,16 +114,18 @@ class Recorder:
 
             def _read_stderr() -> None:
                 for line in proc.stderr:  # type: ignore[union-attr]
-                    line = line.rstrip()
+                    line = line.strip()
                     if line:
                         stderr_lines.append(line)
-                        log.debug("yt_dlp", line=line)
+                        raw_log.debug(f"[yt-dlp] {line}")
 
             stderr_thread = threading.Thread(target=_read_stderr, daemon=True)
             stderr_thread.start()
 
             for line in proc.stdout:  # type: ignore[union-attr]
-                log.debug("yt_dlp_out", line=line.rstrip())
+                line = line.strip()
+                if line:
+                    raw_log.debug(f"[yt-dlp] {line}")
 
             proc.wait()
             stderr_thread.join(timeout=5)

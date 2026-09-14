@@ -394,3 +394,62 @@ def test_drive_upload_create_parameters(tmp_path, monkeypatch):
     assert call_kwargs.get("supportsAllDrives") is True
     assert "includeItemsFromAllDrives" not in call_kwargs
 
+
+def test_load_config_retry_defaults(monkeypatch):
+    monkeypatch.setenv("CHANNELS", "t:T:https://youtube.com/@t/live")
+    cfg = load_config()
+    assert cfg.retries == 20
+    assert cfg.fragment_retries == 20
+
+
+def test_recorder_build_command_retries():
+    from yt_live_archiver.recorder import Recorder
+    cfg = AppConfig(
+        channels=[],
+        retries=20,
+        fragment_retries=20,
+    )
+    rec = Recorder(cfg)
+    info = RecordingInfo(
+        video_id="test1234",
+        channel_id="ch1",
+        channel_name="CH",
+        youtube_url="https://youtube.com/watch?v=test1234",
+        title="Test Title",
+        detected_at="2026-01-01T00:00:00Z",
+    )
+    cmd = rec._build_command(info, Path("/tmp/out.mkv"))
+    assert "--retries" in cmd
+    assert cmd[cmd.index("--retries") + 1] == "20"
+    assert "--fragment-retries" in cmd
+    assert cmd[cmd.index("--fragment-retries") + 1] == "20"
+    assert "--retry-sleep" in cmd
+    assert cmd[cmd.index("--retry-sleep") + 1] == "fragment:exp=1:20"
+
+
+def test_structured_formatter_clean_output():
+    import logging
+    from yt_live_archiver.logging_config import _StructuredFormatter
+
+    formatter = _StructuredFormatter()
+    record = logging.LogRecord(
+        name="yt_live_archiver.recorder",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=1,
+        msg="recording_started",
+        args=(),
+        exc_info=None,
+    )
+    record._extra_ctx = {"video_id": "abc123"}
+    formatted = formatter.format(record)
+
+    # Must contain short logger name [recorder], not yt_live_archiver.recorder
+    assert "[recorder]" in formatted
+    assert "INFO" in formatted
+    assert "recording_started" in formatted
+    assert "video_id=abc123" in formatted
+    # Must start with bracketed timestamp e.g. [2026-
+    assert formatted.startswith("[20")
+
+
