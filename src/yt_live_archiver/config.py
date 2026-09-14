@@ -1,290 +1,246 @@
 """
-Configuration loader and validator.
+Configuration loader — environment variables only.
 
-Reads /config/config.yaml (or the path provided via --config).
-Environment variables can override certain settings via .env / Docker env.
-All container-internal paths are used directly from the config.
+No YAML files, no mounted config volumes.
+Every setting has a sensible default so only CHANNELS (and Drive/webhook
+credentials when those features are enabled) are truly required.
+
+Quick reference
+───────────────
+  CHANNELS                 id:Name:https://youtube.com/@handle/live[,...]
+  POLL_INTERVAL            30         seconds between polls
+  LIVE_FROM_START          true       record from stream beginning
+  WAIT_FOR_VIDEO           300        wait for scheduled stream (seconds)
+  RECORDING_FORMAT         bv*[vcodec^=vp9]+ba/bv+ba/best
+  RECORDING_CONTAINER      mkv
+  WORKING_DIR              /data/working
+  OUTPUT_DIR               /data/archive
+  FAILED_DIR               /data/failed
+  MIN_DURATION             30         minimum valid duration (seconds)
+  REQUIRE_VIDEO            true
+  REQUIRE_AUDIO            true
+  DECODE_TEST              true       ffmpeg null-decode integrity check
+  GOOGLE_DRIVE_ENABLED     false
+  GOOGLE_CLIENT_ID         (required if Drive enabled)
+  GOOGLE_CLIENT_SECRET     (required if Drive enabled)
+  GOOGLE_REFRESH_TOKEN     (required if Drive enabled)
+  GOOGLE_FOLDER_ID         (required if Drive enabled)
+  GOOGLE_SHARED_DRIVE_ID   (optional, Workspace Shared Drives only)
+  GOOGLE_CHUNK_SIZE_MB     64
+  WEBHOOK_ENABLED          false
+  WEBHOOK_URL              (required if webhook enabled)
+  WEBHOOK_TIMEOUT          15
+  WEBHOOK_MAX_ATTEMPTS     10
+  LOG_LEVEL                INFO
 """
 
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from pathlib import Path
 
-import yaml
 
 # ---------------------------------------------------------------------------
-# Sub-configuration dataclasses
+# Sub-configs
 # ---------------------------------------------------------------------------
 
 
 @dataclass
-class ApplicationConfig:
-    data_dir: str = "/data"
-    database: str = "/data/archive.db"
-
-
-@dataclass
-class YouTubeConfig:
-    poll_interval_seconds: int = 30
-    wait_for_video_seconds: int = 300
-    live_from_start: bool = True
-
-
-@dataclass
-class RecordingConfig:
-    working_dir: str = "/data/working"
-    failed_dir: str = "/data/failed"
-    format: str = "bv*[vcodec^=vp9]+ba/bv+ba/best"
-    container: str = "mkv"
-
-
-@dataclass
-class VerificationConfig:
-    require_video: bool = True
-    require_audio: bool = True
-    run_decode_test: bool = True
-    minimum_duration_seconds: float = 30.0
-
-
-@dataclass
-class ProcessingConfig:
-    max_parallel_uploads: int = 2
+class ChannelConfig:
+    id: str
+    name: str
+    url: str
 
 
 @dataclass
 class GoogleDriveConfig:
-    enabled: bool = True
-    credentials_file: str = "/credentials/google-credentials.json"
-    shared_drive_id: str = ""
+    enabled: bool = False
+    client_id: str = ""
+    client_secret: str = ""
+    refresh_token: str = ""
     folder_id: str = ""
+    shared_drive_id: str = ""
     chunk_size_mb: int = 64
 
 
 @dataclass
 class WebhookConfig:
-    enabled: bool = True
+    enabled: bool = False
     url: str = ""
     timeout_seconds: int = 15
     max_attempts: int = 10
 
 
 @dataclass
-class CleanupConfig:
-    require_webhook: bool = True
-
-
-@dataclass
-class ChannelConfig:
-    id: str = ""
-    name: str = ""
-    url: str = ""
-    enabled: bool = True
-
-
-@dataclass
-class RetryConfig:
-    initial_delay_seconds: float = 5.0
-    max_delay_seconds: float = 300.0
-    multiplier: float = 2.0
-    jitter: bool = True
-
-
-@dataclass
 class AppConfig:
-    application: ApplicationConfig = field(default_factory=ApplicationConfig)
-    youtube: YouTubeConfig = field(default_factory=YouTubeConfig)
-    recording: RecordingConfig = field(default_factory=RecordingConfig)
-    verification: VerificationConfig = field(default_factory=VerificationConfig)
-    processing: ProcessingConfig = field(default_factory=ProcessingConfig)
+    channels: list[ChannelConfig]
+    working_dir: str = "/data/working"
+    output_dir: str = "/data/archive"
+    failed_dir: str = "/data/failed"
+    poll_interval: int = 30
+    live_from_start: bool = True
+    wait_for_video: int = 300
+    recording_format: str = "bv*[vcodec^=vp9]+ba/bv+ba/best"
+    recording_container: str = "mkv"
+    min_duration: float = 30.0
+    require_video: bool = True
+    require_audio: bool = True
+    decode_test: bool = True
     google_drive: GoogleDriveConfig = field(default_factory=GoogleDriveConfig)
     webhook: WebhookConfig = field(default_factory=WebhookConfig)
-    cleanup: CleanupConfig = field(default_factory=CleanupConfig)
-    retry: RetryConfig = field(default_factory=RetryConfig)
-    channels: list[ChannelConfig] = field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _env(key: str, default: str = "") -> str:
+    return os.environ.get(key, default).strip()
+
+
+def _env_bool(key: str, default: bool) -> bool:
+    val = _env(key).lower()
+    if val in ("1", "true", "yes"):
+        return True
+    if val in ("0", "false", "no"):
+        return False
+    return default
+
+
+def _env_int(key: str, default: int) -> int:
+    try:
+        return int(_env(key) or default)
+    except (TypeError, ValueError):
+        return default
+
+
+def _env_float(key: str, default: float) -> float:
+    try:
+        return float(_env(key) or default)
+    except (TypeError, ValueError):
+        return default
+
+
+# ---------------------------------------------------------------------------
+# Channel parsing
+# ---------------------------------------------------------------------------
+
+
+def parse_channels(env_str: str) -> list[ChannelConfig]:
+    """Parse CHANNELS env var: 'id:Name:url[,id2:Name2:url2,...]'
+
+    Example:
+        nasa:NASA:https://www.youtube.com/@NASA/live,test:Test:https://youtube.com/@test/live
+    """
+    channels: list[ChannelConfig] = []
+    for raw in env_str.split(","):
+        entry = raw.strip()
+        if not entry:
+            continue
+        parts = entry.split(":", 2)
+        if len(parts) < 3:
+            raise ConfigError(
+                f"Invalid channel entry '{entry}'. "
+                "Expected format: id:Display Name:https://youtube.com/@handle/live"
+            )
+        ch_id, ch_name, ch_url = parts[0].strip(), parts[1].strip(), parts[2].strip()
+        if not ch_id or not ch_url:
+            raise ConfigError(f"Channel entry '{entry}' is missing id or url.")
+        channels.append(ChannelConfig(id=ch_id, name=ch_name or ch_id, url=ch_url))
+    return channels
 
 
 # ---------------------------------------------------------------------------
 # Loader
 # ---------------------------------------------------------------------------
 
-_DEFAULT_CONFIG_PATH = "/config/config.yaml"
 
+def load_config() -> AppConfig:
+    """Read all settings from environment variables and return AppConfig.
 
-def load_config(config_path: str | None = None) -> AppConfig:
-    """Load and validate configuration from a YAML file.
-
-    Falls back to environment variables for the config path.
-    Raises ConfigError for missing or invalid configuration.
+    Raises ConfigError on invalid or missing required values.
     """
-    path = config_path or os.environ.get("CONFIG_PATH", _DEFAULT_CONFIG_PATH)
+    channels_raw = _env("CHANNELS")
+    if not channels_raw:
+        raise ConfigError(
+            "CHANNELS environment variable is required.\n"
+            "Example: CHANNELS=nasa:NASA:https://www.youtube.com/@NASA/live"
+        )
 
-    config_file = Path(path)
-    if not config_file.exists():
-        raise ConfigError(f"Configuration file not found: {path}")
+    channels = parse_channels(channels_raw)
 
-    try:
-        raw = yaml.safe_load(config_file.read_text(encoding="utf-8"))
-    except yaml.YAMLError as exc:
-        raise ConfigError(f"Failed to parse configuration YAML: {exc}") from exc
+    drive = GoogleDriveConfig(
+        enabled=_env_bool("GOOGLE_DRIVE_ENABLED", False),
+        client_id=_env("GOOGLE_CLIENT_ID"),
+        client_secret=_env("GOOGLE_CLIENT_SECRET"),
+        refresh_token=_env("GOOGLE_REFRESH_TOKEN"),
+        folder_id=_env("GOOGLE_FOLDER_ID"),
+        shared_drive_id=_env("GOOGLE_SHARED_DRIVE_ID"),
+        chunk_size_mb=_env_int("GOOGLE_CHUNK_SIZE_MB", 64),
+    )
 
-    if not isinstance(raw, dict):
-        raise ConfigError("Configuration file must be a YAML mapping at the top level")
+    webhook = WebhookConfig(
+        enabled=_env_bool("WEBHOOK_ENABLED", False),
+        url=_env("WEBHOOK_URL"),
+        timeout_seconds=_env_int("WEBHOOK_TIMEOUT", 15),
+        max_attempts=_env_int("WEBHOOK_MAX_ATTEMPTS", 10),
+    )
 
-    cfg = _parse_config(raw)
-    _apply_env_overrides(cfg)
+    cfg = AppConfig(
+        channels=channels,
+        working_dir=_env("WORKING_DIR", "/data/working"),
+        output_dir=_env("OUTPUT_DIR", "/data/archive"),
+        failed_dir=_env("FAILED_DIR", "/data/failed"),
+        poll_interval=_env_int("POLL_INTERVAL", 30),
+        live_from_start=_env_bool("LIVE_FROM_START", True),
+        wait_for_video=_env_int("WAIT_FOR_VIDEO", 300),
+        recording_format=_env("RECORDING_FORMAT", "bv*[vcodec^=vp9]+ba/bv+ba/best"),
+        recording_container=_env("RECORDING_CONTAINER", "mkv"),
+        min_duration=_env_float("MIN_DURATION", 30.0),
+        require_video=_env_bool("REQUIRE_VIDEO", True),
+        require_audio=_env_bool("REQUIRE_AUDIO", True),
+        decode_test=_env_bool("DECODE_TEST", True),
+        google_drive=drive,
+        webhook=webhook,
+    )
+
     _validate(cfg)
     return cfg
 
 
-def _parse_config(raw: dict) -> AppConfig:
-    """Parse raw YAML dict into AppConfig dataclass tree."""
-    cfg = AppConfig()
-
-    if "application" in raw:
-        a = raw["application"]
-        cfg.application.data_dir = a.get("data_dir", cfg.application.data_dir)
-        cfg.application.database = a.get("database", cfg.application.database)
-
-    if "youtube" in raw:
-        y = raw["youtube"]
-        cfg.youtube.poll_interval_seconds = int(
-            y.get("poll_interval_seconds", cfg.youtube.poll_interval_seconds)
-        )
-        cfg.youtube.wait_for_video_seconds = int(
-            y.get("wait_for_video_seconds", cfg.youtube.wait_for_video_seconds)
-        )
-        cfg.youtube.live_from_start = bool(
-            y.get("live_from_start", cfg.youtube.live_from_start)
-        )
-
-    if "recording" in raw:
-        r = raw["recording"]
-        cfg.recording.working_dir = r.get("working_dir", cfg.recording.working_dir)
-        cfg.recording.failed_dir = r.get("failed_dir", cfg.recording.failed_dir)
-        cfg.recording.format = r.get("format", cfg.recording.format)
-        cfg.recording.container = r.get("container", cfg.recording.container)
-
-    if "verification" in raw:
-        v = raw["verification"]
-        cfg.verification.require_video = bool(
-            v.get("require_video", cfg.verification.require_video)
-        )
-        cfg.verification.require_audio = bool(
-            v.get("require_audio", cfg.verification.require_audio)
-        )
-        cfg.verification.run_decode_test = bool(
-            v.get("run_decode_test", cfg.verification.run_decode_test)
-        )
-        cfg.verification.minimum_duration_seconds = float(
-            v.get("minimum_duration_seconds", cfg.verification.minimum_duration_seconds)
-        )
-
-    if "processing" in raw:
-        p = raw["processing"]
-        cfg.processing.max_parallel_uploads = int(
-            p.get("max_parallel_uploads", cfg.processing.max_parallel_uploads)
-        )
-
-    if "google_drive" in raw:
-        gd = raw["google_drive"]
-        cfg.google_drive.enabled = bool(gd.get("enabled", cfg.google_drive.enabled))
-        cfg.google_drive.credentials_file = gd.get(
-            "credentials_file", cfg.google_drive.credentials_file
-        )
-        cfg.google_drive.shared_drive_id = gd.get(
-            "shared_drive_id", cfg.google_drive.shared_drive_id
-        )
-        cfg.google_drive.folder_id = gd.get("folder_id", cfg.google_drive.folder_id)
-        cfg.google_drive.chunk_size_mb = int(
-            gd.get("chunk_size_mb", cfg.google_drive.chunk_size_mb)
-        )
-
-    if "webhook" in raw:
-        wh = raw["webhook"]
-        cfg.webhook.enabled = bool(wh.get("enabled", cfg.webhook.enabled))
-        cfg.webhook.url = wh.get("url", cfg.webhook.url)
-        cfg.webhook.timeout_seconds = int(
-            wh.get("timeout_seconds", cfg.webhook.timeout_seconds)
-        )
-        cfg.webhook.max_attempts = int(wh.get("max_attempts", cfg.webhook.max_attempts))
-
-    if "cleanup" in raw:
-        cl = raw["cleanup"]
-        cfg.cleanup.require_webhook = bool(
-            cl.get("require_webhook", cfg.cleanup.require_webhook)
-        )
-
-    if "retry" in raw:
-        rt = raw["retry"]
-        cfg.retry.initial_delay_seconds = float(
-            rt.get("initial_delay_seconds", cfg.retry.initial_delay_seconds)
-        )
-        cfg.retry.max_delay_seconds = float(
-            rt.get("max_delay_seconds", cfg.retry.max_delay_seconds)
-        )
-        cfg.retry.multiplier = float(rt.get("multiplier", cfg.retry.multiplier))
-        cfg.retry.jitter = bool(rt.get("jitter", cfg.retry.jitter))
-
-    if raw.get("channels"):
-        for ch in raw["channels"]:
-            cfg.channels.append(
-                ChannelConfig(
-                    id=ch.get("id", ""),
-                    name=ch.get("name", ""),
-                    url=ch.get("url", ""),
-                    enabled=bool(ch.get("enabled", True)),
-                )
-            )
-
-    return cfg
-
-
-def _apply_env_overrides(cfg: AppConfig) -> None:
-    """Apply environment variable overrides.
-
-    Environment variables take precedence over the config file.
-    Secrets (webhook URL, credentials path) can be injected this way.
-    """
-    if url := os.environ.get("WEBHOOK_URL"):
-        cfg.webhook.url = url
-    if creds := os.environ.get("GOOGLE_CREDENTIALS_FILE"):
-        cfg.google_drive.credentials_file = creds
-    if drive_id := os.environ.get("GOOGLE_SHARED_DRIVE_ID"):
-        cfg.google_drive.shared_drive_id = drive_id
-    if folder_id := os.environ.get("GOOGLE_FOLDER_ID"):
-        cfg.google_drive.folder_id = folder_id
-
-
 def _validate(cfg: AppConfig) -> None:
-    """Validate the loaded configuration and raise ConfigError for problems."""
     errors: list[str] = []
 
     if not cfg.channels:
-        errors.append("No channels configured. Add at least one channel under 'channels:'")
+        errors.append("No channels configured. Set CHANNELS=id:name:url")
 
     for ch in cfg.channels:
         if not ch.id:
-            errors.append("A channel is missing a required 'id' field")
+            errors.append("A channel is missing an 'id'.")
         if not ch.url:
-            errors.append(f"Channel '{ch.id}' is missing a required 'url' field")
+            errors.append(f"Channel '{ch.id}' is missing a 'url'.")
 
     if cfg.google_drive.enabled:
+        if not cfg.google_drive.client_id:
+            errors.append("GOOGLE_CLIENT_ID is required when GOOGLE_DRIVE_ENABLED=true")
+        if not cfg.google_drive.client_secret:
+            errors.append("GOOGLE_CLIENT_SECRET is required when GOOGLE_DRIVE_ENABLED=true")
+        if not cfg.google_drive.refresh_token:
+            errors.append("GOOGLE_REFRESH_TOKEN is required when GOOGLE_DRIVE_ENABLED=true")
         if not cfg.google_drive.folder_id:
-            errors.append(
-                "google_drive.folder_id is required when google_drive.enabled=true"
-            )
+            errors.append("GOOGLE_FOLDER_ID is required when GOOGLE_DRIVE_ENABLED=true")
 
     if cfg.webhook.enabled and not cfg.webhook.url:
-        errors.append("webhook.url is required when webhook.enabled=true")
+        errors.append("WEBHOOK_URL is required when WEBHOOK_ENABLED=true")
 
-    if cfg.youtube.poll_interval_seconds < 5:
-        errors.append("youtube.poll_interval_seconds must be at least 5")
+    if cfg.poll_interval < 5:
+        errors.append("POLL_INTERVAL must be at least 5 seconds")
 
     if errors:
-        msg = "Configuration validation failed:\n" + "\n".join(f"  - {e}" for e in errors)
-        raise ConfigError(msg)
+        raise ConfigError(
+            "Configuration errors:\n" + "\n".join(f"  - {e}" for e in errors)
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -293,4 +249,4 @@ def _validate(cfg: AppConfig) -> None:
 
 
 class ConfigError(Exception):
-    """Raised when configuration is missing, invalid, or cannot be loaded."""
+    """Raised when the configuration is invalid or incomplete."""
