@@ -170,19 +170,33 @@ def load_config() -> AppConfig:
 
     channels = parse_channels(channels_raw)
 
+    drive_folder = _env("GOOGLE_FOLDER_ID") or _env("GOOGLE_DRIVE_FOLDER_ID")
+    drive_creds_present = bool(
+        _env("GOOGLE_CLIENT_ID")
+        and _env("GOOGLE_CLIENT_SECRET")
+        and _env("GOOGLE_REFRESH_TOKEN")
+        and drive_folder
+    )
+    drive_enabled_default = drive_creds_present
+    drive_enabled = _env_bool("GOOGLE_DRIVE_ENABLED", drive_enabled_default)
+
     drive = GoogleDriveConfig(
-        enabled=_env_bool("GOOGLE_DRIVE_ENABLED", False),
+        enabled=drive_enabled,
         client_id=_env("GOOGLE_CLIENT_ID"),
         client_secret=_env("GOOGLE_CLIENT_SECRET"),
         refresh_token=_env("GOOGLE_REFRESH_TOKEN"),
-        folder_id=_env("GOOGLE_FOLDER_ID"),
+        folder_id=drive_folder,
         shared_drive_id=_env("GOOGLE_SHARED_DRIVE_ID"),
         chunk_size_mb=_env_int("GOOGLE_CHUNK_SIZE_MB", 64),
     )
 
+    webhook_url = _env("WEBHOOK_URL") or _env("DISCORD_WEBHOOK_URL")
+    webhook_enabled_default = bool(webhook_url)
+    webhook_enabled = _env_bool("WEBHOOK_ENABLED", webhook_enabled_default)
+
     webhook = WebhookConfig(
-        enabled=_env_bool("WEBHOOK_ENABLED", False),
-        url=_env("WEBHOOK_URL"),
+        enabled=webhook_enabled,
+        url=webhook_url,
         timeout_seconds=_env_int("WEBHOOK_TIMEOUT", 15),
         max_attempts=_env_int("WEBHOOK_MAX_ATTEMPTS", 10),
     )

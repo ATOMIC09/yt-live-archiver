@@ -220,7 +220,6 @@ class DriveClient:
             media_body=media,
             fields="id,name,size",
             supportsAllDrives=True,
-            includeItemsFromAllDrives=True,
         )
 
         # Execute with automatic retry on transient errors

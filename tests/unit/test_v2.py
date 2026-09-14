@@ -341,3 +341,56 @@ def test_merge_or_pick_picks_complete_file(tmp_path, monkeypatch):
 
     result = rec._merge_or_pick(tmp_path, [complete, junk], log)
     assert result == complete
+
+
+def test_load_config_aliases_and_auto_enable(monkeypatch):
+    monkeypatch.setenv("CHANNELS", "t:T:https://youtube.com/@t/live")
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "client_123")
+    monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "secret_456")
+    monkeypatch.setenv("GOOGLE_REFRESH_TOKEN", "refresh_789")
+    monkeypatch.setenv("GOOGLE_DRIVE_FOLDER_ID", "folder_abc")
+    monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://discord.com/api/webhooks/123/xyz")
+
+    cfg = load_config()
+    assert cfg.google_drive.enabled is True
+    assert cfg.google_drive.folder_id == "folder_abc"
+    assert cfg.webhook.enabled is True
+    assert cfg.webhook.url == "https://discord.com/api/webhooks/123/xyz"
+
+
+def test_drive_upload_create_parameters(tmp_path, monkeypatch):
+    from unittest.mock import MagicMock
+    from yt_live_archiver.drive import DriveClient
+
+    test_file = tmp_path / "test.mkv"
+    test_file.write_bytes(b"content" * 50)
+
+    cfg = GoogleDriveConfig(
+        enabled=True,
+        client_id="id",
+        client_secret="secret",
+        refresh_token="token",
+        folder_id="target_folder",
+    )
+    client = DriveClient(cfg)
+
+    mock_service = MagicMock()
+    mock_request = MagicMock()
+    mock_request.next_chunk.return_value = (None, {"id": "uploaded_123", "name": "test.mkv", "size": "350"})
+    mock_service.files().create.return_value = mock_request
+
+    monkeypatch.setattr(client, "_get_service", lambda: mock_service)
+    monkeypatch.setattr(client, "get_or_create_subfolder", lambda parent, sub: "sub_123")
+
+    info = client.upload_file(
+        local_path=test_file,
+        remote_name="test.mkv",
+        subfolder_name="Atomic",
+    )
+
+    assert info.file_id == "uploaded_123"
+    # Verify create was called with supportsAllDrives=True and NOT includeItemsFromAllDrives
+    call_kwargs = mock_service.files().create.call_args.kwargs
+    assert call_kwargs.get("supportsAllDrives") is True
+    assert "includeItemsFromAllDrives" not in call_kwargs
+
