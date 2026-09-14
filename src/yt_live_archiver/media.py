@@ -9,8 +9,6 @@ Checks:
 5. Required streams (video/audio) are present
 6. Duration meets minimum threshold
 7. FFmpeg decode test passes
-
-Metadata extracted and returned for DB persistence.
 """
 
 from __future__ import annotations
@@ -20,11 +18,22 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from yt_live_archiver.config import VerificationConfig
 from yt_live_archiver.logging_config import get_logger
 from yt_live_archiver.utils import file_size_bytes, is_file_stable
 
 logger = get_logger(__name__)
+
+
+@dataclass
+class VerificationConfig:
+    """Settings that control what media.py checks."""
+
+    require_video: bool = True
+    require_audio: bool = True
+    run_decode_test: bool = True
+    minimum_duration_seconds: float = 30.0
+
+
 
 
 # ---------------------------------------------------------------------------

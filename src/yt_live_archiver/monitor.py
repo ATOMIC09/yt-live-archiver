@@ -1,8 +1,9 @@
 """
-YouTube channel monitor.
+YouTube channel monitor — no database, in-memory deduplication.
 
-Polls configured channels for active livestreams using yt-dlp.
-Creates database records and dispatches recording tasks.
+Polls configured channels with yt-dlp in metadata-only mode.
+Calls the on_live_detected callback for new streams.
+Tracks seen video IDs in a shared in-memory set to avoid re-recording.
 """
 
 from __future__ import annotations
@@ -13,9 +14,8 @@ import subprocess
 from datetime import UTC, datetime
 
 from yt_live_archiver.config import AppConfig, ChannelConfig
-from yt_live_archiver.database import Database
 from yt_live_archiver.logging_config import get_logger
-from yt_live_archiver.models import Recording, RecordingStatus
+from yt_live_archiver.models import RecordingInfo
 
 logger = get_logger(__name__)
 
@@ -30,22 +30,14 @@ class LiveStreamInfo:
 
 
 class ChannelMonitor:
-    """Monitors a single YouTube channel for live streams.
+    """Checks a single YouTube channel for an active live stream using yt-dlp."""
 
-    Uses yt-dlp in flat-playlist / metadata-only mode to check
-    if the channel is currently live.
-    """
-
-    def __init__(self, channel: ChannelConfig, config: AppConfig) -> None:
+    def __init__(self, channel: ChannelConfig) -> None:
         self.channel = channel
-        self.config = config
         self._log = get_logger(__name__, channel=channel.id)
 
     def check_live(self) -> LiveStreamInfo | None:
-        """Check if the channel is currently live.
-
-        Returns LiveStreamInfo if live, None if offline or error.
-        """
+        """Return LiveStreamInfo if the channel is live, else None."""
         cmd = [
             "yt-dlp",
             "--no-warnings",
@@ -57,85 +49,67 @@ class ChannelMonitor:
         ]
 
         try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
         except subprocess.TimeoutExpired:
-            self._log.warning("yt-dlp metadata check timed out")
+            self._log.warning("yt_dlp_check_timeout")
             return None
         except FileNotFoundError:
-            self._log.error("yt-dlp not found in PATH")
+            self._log.error("yt_dlp_not_found")
             return None
         except Exception as exc:
-            self._log.warning("yt-dlp metadata check failed", error=str(exc))
+            self._log.warning("yt_dlp_check_error", error=str(exc))
             return None
 
         if result.returncode != 0:
-            # Not live or channel offline — expected and non-alarming
             self._log.debug("channel_not_live", returncode=result.returncode)
             return None
 
-        # Parse JSON output
         stdout = result.stdout.strip()
         if not stdout:
             return None
 
-        # yt-dlp may emit multiple JSON objects (one per entry); take first
-        first_line = stdout.splitlines()[0]
+        # yt-dlp may emit multiple JSON objects; take the first
         try:
-            info = json.loads(first_line)
+            info = json.loads(stdout.splitlines()[0])
         except json.JSONDecodeError as exc:
-            self._log.warning("Failed to parse yt-dlp JSON output", error=str(exc))
+            self._log.warning("yt_dlp_json_parse_error", error=str(exc))
             return None
 
-        # Confirm this is a live broadcast
         is_live = info.get("is_live") or info.get("live_status") == "is_live"
         if not is_live:
-            self._log.debug("yt-dlp returned a non-live entry; skipping")
+            self._log.debug("not_a_live_entry")
             return None
 
         video_id = info.get("id", "")
-        title = info.get("title", "")
-        webpage_url = info.get("webpage_url") or f"https://www.youtube.com/watch?v={video_id}"
-
         if not video_id:
-            self._log.warning("Live video detected but missing video ID")
+            self._log.warning("live_missing_video_id")
             return None
 
-        return LiveStreamInfo(video_id=video_id, title=title, url=webpage_url)
+        title = info.get("title", "")
+        url = info.get("webpage_url") or f"https://www.youtube.com/watch?v={video_id}"
+        return LiveStreamInfo(video_id=video_id, title=title, url=url)
 
 
 class MonitorLoop:
-    """Continuously monitors all configured channels.
+    """Continuously polls all configured channels.
 
-    Runs channel checks in the configured interval.
-    Dispatches callbacks when a new live stream is detected.
+    Uses an in-memory set (*seen_ids*) shared with the Application to
+    prevent duplicate recordings within the same process lifetime.
     """
 
-    def __init__(self, config: AppConfig, db: Database) -> None:
+    def __init__(self, config: AppConfig, seen_ids: set[str]) -> None:
         self.config = config
-        self.db = db
+        self._seen_ids = seen_ids
         self._stop_event = asyncio.Event()
         self._log = get_logger(__name__)
 
     def stop(self) -> None:
-        """Signal the monitor loop to stop."""
         self._stop_event.set()
 
     async def run(self, on_live_detected) -> None:  # noqa: ANN001
-        """Main monitor loop. Calls on_live_detected(channel, video_id, title, url).
-
-        Runs until stop() is called.
-        """
-        self._log.info("Monitor loop started", channels=len(self.config.channels))
-        monitors = {
-            ch.id: ChannelMonitor(ch, self.config)
-            for ch in self.config.channels
-            if ch.enabled
-        }
+        """Poll channels until stop() is called."""
+        self._log.info("monitor_started", channels=len(self.config.channels))
+        monitors = {ch.id: ChannelMonitor(ch) for ch in self.config.channels}
 
         while not self._stop_event.is_set():
             tasks = [
@@ -147,53 +121,37 @@ class MonitorLoop:
             try:
                 await asyncio.wait_for(
                     self._stop_event.wait(),
-                    timeout=self.config.youtube.poll_interval_seconds,
+                    timeout=self.config.poll_interval,
                 )
             except TimeoutError:
-                pass  # Normal — sleep expired, loop again
+                pass  # Normal — poll interval elapsed
 
-        self._log.info("Monitor loop stopped")
+        self._log.info("monitor_stopped")
 
     async def _check_channel(self, monitor: ChannelMonitor, on_live_detected) -> None:  # noqa: ANN001
-        """Check one channel and call on_live_detected if live and new."""
         log = get_logger(__name__, channel=monitor.channel.id)
         try:
-            live = await asyncio.get_event_loop().run_in_executor(
-                None, monitor.check_live
-            )
+            live = await asyncio.get_event_loop().run_in_executor(None, monitor.check_live)
             if live is None:
                 return
 
             log.info("live_detected", video_id=live.video_id, title=live.title)
 
-            # Duplicate check
-            if self.db.video_id_exists(live.video_id):
-                log.debug(
-                    "Already have a record for this video, skipping",
-                    video_id=live.video_id,
-                )
+            if live.video_id in self._seen_ids:
+                log.debug("already_seen", video_id=live.video_id)
                 return
 
-            # Create DB record immediately
-            now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-            recording = Recording(
-                youtube_video_id=live.video_id,
+            self._seen_ids.add(live.video_id)
+
+            info = RecordingInfo(
+                video_id=live.video_id,
                 channel_id=monitor.channel.id,
                 channel_name=monitor.channel.name,
-                channel_url=monitor.channel.url,
                 youtube_url=live.url,
                 title=live.title,
-                status=RecordingStatus.DISCOVERED,
-                detected_at=now,
+                detected_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
             )
-            self.db.create_recording(recording)
-            log.info(
-                "recording_created",
-                video_id=live.video_id,
-                db_id=recording.id,
-            )
-
-            await on_live_detected(recording)
+            await on_live_detected(info)
 
         except Exception as exc:
-            log.error("Error checking channel", error=str(exc))
+            log.error("channel_check_error", error=str(exc))

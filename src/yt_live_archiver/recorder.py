@@ -1,46 +1,33 @@
 """
-yt-dlp recorder subprocess wrapper.
+yt-dlp recorder subprocess wrapper with automatic segment merging.
 
 Responsibilities:
-- Build the yt-dlp command
-- Launch the subprocess
-- Stream and capture output (for logging)
-- Record timestamps
-- Return a structured result
-- Manage working directory files
+  - Build and launch the yt-dlp command
+  - Stream and log subprocess output
+  - Detect multiple output segments produced by yt-dlp (stream restarts)
+  - Merge segments into a single file via ffmpeg concat
+  - Return a structured RecordingResult
 """
 
 from __future__ import annotations
 
 import subprocess
 import threading
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
 from yt_live_archiver.config import AppConfig
 from yt_live_archiver.logging_config import get_logger
-from yt_live_archiver.models import Recording
+from yt_live_archiver.models import RecordingInfo, RecordingResult
 from yt_live_archiver.utils import ensure_dir
 
 logger = get_logger(__name__)
 
-
-@dataclass
-class RecordingResult:
-    """Result from a completed yt-dlp recording attempt."""
-
-    success: bool
-    exit_code: int
-    output_path: Path | None
-    started_at: str
-    ended_at: str
-    error_message: str | None = None
-    stderr_output: str = ""
+_MEDIA_EXTENSIONS = {".mkv", ".mp4", ".webm", ".ts", ".m4a", ".ogg"}
 
 
 class Recorder:
-    """Runs yt-dlp as a subprocess to record a YouTube livestream."""
+    """Runs yt-dlp as a subprocess and returns the recording result."""
 
     def __init__(self, config: AppConfig) -> None:
         self.config = config
@@ -48,76 +35,63 @@ class Recorder:
         self._active_processes: dict[str, subprocess.Popen] = {}
         self._lock = threading.Lock()
 
-    def _build_command(self, recording: Recording, output_path: Path) -> list[str]:
-        """Construct the yt-dlp command for this recording."""
-        cfg = self.config.recording
-        yt_cfg = self.config.youtube
+    # ------------------------------------------------------------------
+    # Path helpers
+    # ------------------------------------------------------------------
+
+    def _working_path(self, info: RecordingInfo) -> Path:
+        """Return the working directory for this recording."""
+        return Path(self.config.working_dir) / info.channel_id / info.video_id
+
+    def _output_template(self, info: RecordingInfo) -> Path:
+        """Return the yt-dlp output path (yt-dlp appends the extension)."""
+        return self._working_path(info) / "recording"
+
+    # ------------------------------------------------------------------
+    # Command builder
+    # ------------------------------------------------------------------
+
+    def _build_command(self, info: RecordingInfo, output_template: Path) -> list[str]:
+        cfg = self.config
 
         cmd = [
             "yt-dlp",
             "--no-warnings",
-            # Format selection
-            "--format", cfg.format,
-            # Output template — yt-dlp writes to this exact path
-            "--output", str(output_path),
-            # Merge into MKV container
-            "--merge-output-format", cfg.container,
-            "--remux-video", cfg.container,
-            # HLS reliability
+            "--format", cfg.recording_format,
+            "--output", str(output_template),
+            "--merge-output-format", cfg.recording_container,
+            "--remux-video", cfg.recording_container,
             "--hls-use-mpegts",
-            # Retries
             "--retries", "infinite",
             "--fragment-retries", "infinite",
-            # Network
             "--socket-timeout", "30",
-            # Metadata embedding (useful for post-processing)
             "--add-metadata",
-            # No part files — we manage our own working path
             "--no-part",
         ]
 
-        if yt_cfg.live_from_start:
+        if cfg.live_from_start:
             cmd.append("--live-from-start")
 
-        # Wait for video to become available (for pre-scheduled streams)
-        cmd.extend([
-            "--wait-for-video",
-            str(yt_cfg.wait_for_video_seconds),
-        ])
-
-        # Target URL
-        cmd.append(recording.youtube_url)
-
+        cmd.extend(["--wait-for-video", str(cfg.wait_for_video)])
+        cmd.append(info.youtube_url)
         return cmd
 
-    def _working_path(self, recording: Recording) -> Path:
-        """Return the working directory for this recording."""
-        return (
-            Path(self.config.recording.working_dir)
-            / recording.channel_id
-            / recording.youtube_video_id
-        )
+    # ------------------------------------------------------------------
+    # Core recording
+    # ------------------------------------------------------------------
 
-    def _output_template(self, recording: Recording) -> Path:
-        """Return the yt-dlp output path (without extension — yt-dlp adds it)."""
-        return self._working_path(recording) / "recording"
-
-    def record(self, recording: Recording) -> RecordingResult:
+    def record(self, info: RecordingInfo) -> RecordingResult:
         """Synchronously run yt-dlp and return a RecordingResult.
 
-        Blocks until yt-dlp exits (normal stream end, error, or external kill).
+        Blocks until yt-dlp exits. Merges multiple output segments if needed.
         """
-        log = get_logger(
-            __name__,
-            channel=recording.channel_id,
-            video_id=recording.youtube_video_id,
-        )
+        log = get_logger(__name__, channel=info.channel_id, video_id=info.video_id)
 
-        working_dir = self._working_path(recording)
+        working_dir = self._working_path(info)
         ensure_dir(working_dir)
 
-        output_template = self._output_template(recording)
-        cmd = self._build_command(recording, output_template)
+        output_template = self._output_template(info)
+        cmd = self._build_command(info, output_template)
         log.info("recording_starting", cmd=" ".join(cmd))
 
         started_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -133,119 +107,78 @@ class Recorder:
             )
 
             with self._lock:
-                self._active_processes[recording.youtube_video_id] = proc
+                self._active_processes[info.video_id] = proc
 
-            # Stream stderr in a thread so we don't deadlock
             def _read_stderr() -> None:
                 for line in proc.stderr:  # type: ignore[union-attr]
                     line = line.rstrip()
                     if line:
                         stderr_lines.append(line)
-                        log.debug("yt-dlp_stderr", line=line)
+                        log.debug("yt_dlp", line=line)
 
             stderr_thread = threading.Thread(target=_read_stderr, daemon=True)
             stderr_thread.start()
 
-            # Drain stdout too (avoid pipe buffer fill)
             for line in proc.stdout:  # type: ignore[union-attr]
-                log.debug("yt-dlp_stdout", line=line.rstrip())
+                log.debug("yt_dlp_out", line=line.rstrip())
 
             proc.wait()
             stderr_thread.join(timeout=5)
 
         except FileNotFoundError:
-            log.error("yt-dlp not found in PATH")
-            return RecordingResult(
-                success=False,
-                exit_code=-1,
-                output_path=None,
-                started_at=started_at,
-                ended_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                error_message="yt-dlp not found in PATH",
-            )
+            log.error("yt_dlp_not_found")
+            return self._failure(started_at, "yt-dlp not found in PATH")
         except Exception as exc:
-            log.error("Failed to launch yt-dlp", error=str(exc))
-            return RecordingResult(
-                success=False,
-                exit_code=-1,
-                output_path=None,
-                started_at=started_at,
-                ended_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                error_message=str(exc),
-            )
+            log.error("yt_dlp_launch_error", error=str(exc))
+            return self._failure(started_at, str(exc))
         finally:
             with self._lock:
-                self._active_processes.pop(recording.youtube_video_id, None)
+                self._active_processes.pop(info.video_id, None)
 
         ended_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         exit_code = proc.returncode
-        stderr_text = "\n".join(stderr_lines[-50:])  # Keep last 50 lines
+        stderr_text = "\n".join(stderr_lines[-50:])
 
-        log.info(
-            "recording_finished",
-            exit_code=exit_code,
-        )
+        log.info("recording_finished", exit_code=exit_code)
 
-        # Check for output file
-        # yt-dlp may produce a slightly different filename; search the working dir
-        output_path = self._find_output_file(working_dir)
+        # Find and (if needed) merge output files
+        media_files = self._find_media_files(working_dir)
+
+        if not media_files:
+            if exit_code == 0:
+                return self._failure(started_at, "yt-dlp exited 0 but produced no output file",
+                                     exit_code=exit_code, stderr=stderr_text, ended_at=ended_at)
+            return self._failure(started_at, f"yt-dlp exited {exit_code}, no output file",
+                                 exit_code=exit_code, stderr=stderr_text, ended_at=ended_at)
+
+        # Merge segments if more than one file was produced
+        output_path = self._merge_or_pick(working_dir, media_files, log)
 
         if exit_code != 0:
-            error_msg = f"yt-dlp exited with code {exit_code}"
             if output_path and output_path.stat().st_size > 0:
-                # Non-zero exit but we have a file — treat as partial success
                 log.warning(
-                    "yt-dlp non-zero exit but output file exists, treating as complete",
+                    "non_zero_exit_but_file_exists",
+                    exit_code=exit_code,
                     path=str(output_path),
-                    size=output_path.stat().st_size,
                 )
+                # Treat as success — stream may have ended with a non-zero code
+            else:
                 return RecordingResult(
-                    success=True,
+                    success=False,
                     exit_code=exit_code,
                     output_path=output_path,
                     started_at=started_at,
                     ended_at=ended_at,
-                    error_message=error_msg,
+                    error_message=f"yt-dlp exit code {exit_code}",
                     stderr_output=stderr_text,
                 )
 
-            return RecordingResult(
-                success=False,
-                exit_code=exit_code,
-                output_path=output_path,
-                started_at=started_at,
-                ended_at=ended_at,
-                error_message=error_msg,
-                stderr_output=stderr_text,
-            )
-
-        if output_path is None or not output_path.exists():
-            return RecordingResult(
-                success=False,
-                exit_code=exit_code,
-                output_path=None,
-                started_at=started_at,
-                ended_at=ended_at,
-                error_message="yt-dlp exited 0 but no output file found",
-                stderr_output=stderr_text,
-            )
-
         if output_path.stat().st_size == 0:
-            return RecordingResult(
-                success=False,
-                exit_code=exit_code,
-                output_path=output_path,
-                started_at=started_at,
-                ended_at=ended_at,
-                error_message="Output file exists but is zero bytes",
-                stderr_output=stderr_text,
-            )
+            return self._failure(started_at, "Output file is zero bytes",
+                                 exit_code=exit_code, stderr=stderr_text, ended_at=ended_at,
+                                 output_path=output_path)
 
-        log.info(
-            "recording_file_ready",
-            path=str(output_path),
-            size=output_path.stat().st_size,
-        )
+        log.info("recording_file_ready", path=str(output_path), size=output_path.stat().st_size)
         return RecordingResult(
             success=True,
             exit_code=exit_code,
@@ -255,23 +188,125 @@ class Recorder:
             stderr_output=stderr_text,
         )
 
-    def _find_output_file(self, working_dir: Path) -> Path | None:
-        """Search working_dir for a media file produced by yt-dlp."""
-        extensions = {".mkv", ".mp4", ".webm", ".ts", ".m4a", ".ogg"}
-        candidates: list[Path] = []
-        for p in working_dir.iterdir():
-            if p.suffix.lower() in extensions and p.is_file():
-                candidates.append(p)
-        if not candidates:
+    # ------------------------------------------------------------------
+    # Segment helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _find_media_files(working_dir: Path) -> list[Path]:
+        """Return all media files in *working_dir*."""
+        return [
+            p for p in working_dir.iterdir()
+            if p.is_file() and p.suffix.lower() in _MEDIA_EXTENSIONS
+        ]
+
+    def _merge_or_pick(
+        self,
+        working_dir: Path,
+        files: list[Path],
+        log,  # noqa: ANN001
+    ) -> Path:
+        """Return a single output path from potentially multiple segment files.
+
+        If only one file exists, return it directly.
+        If multiple files exist, attempt an ffmpeg concat merge.
+        Falls back to the largest file on merge failure.
+        """
+        if len(files) == 1:
+            return files[0]
+
+        log.info("multiple_segments_found", count=len(files))
+        merged = self._merge_segments(working_dir, files, log)
+        if merged is not None:
+            return merged
+
+        # Merge failed — fall back to largest file
+        log.warning("merge_failed_using_largest_file")
+        return max(files, key=lambda p: p.stat().st_size)
+
+    @staticmethod
+    def _merge_segments(working_dir: Path, files: list[Path], log) -> Path | None:  # noqa: ANN001
+        """Merge segment files into a single MKV via ffmpeg concat.
+
+        Files are sorted by modification time (oldest first) to preserve
+        chronological order. Returns the merged path on success, None on failure.
+        """
+        files_sorted = sorted(files, key=lambda p: p.stat().st_mtime)
+        concat_list = working_dir / "concat_list.txt"
+        merged_path = working_dir / "merged.mkv"
+
+        try:
+            concat_list.write_text(
+                "\n".join(f"file '{p.resolve()}'" for p in files_sorted),
+                encoding="utf-8",
+            )
+
+            cmd = [
+                "ffmpeg",
+                "-f", "concat",
+                "-safe", "0",
+                "-i", str(concat_list),
+                "-c", "copy",
+                "-y",
+                str(merged_path),
+            ]
+
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=3600
+            )
+
+            if result.returncode == 0 and merged_path.exists() and merged_path.stat().st_size > 0:
+                # Clean up source segments
+                for p in files_sorted:
+                    try:
+                        p.unlink()
+                    except OSError:
+                        pass
+                concat_list.unlink(missing_ok=True)
+                log.info("segments_merged", output=str(merged_path), segments=len(files_sorted))
+                return merged_path
+
+            log.warning(
+                "ffmpeg_merge_failed",
+                returncode=result.returncode,
+                stderr=result.stderr[:300],
+            )
             return None
-        # Return largest file (most likely the merged output)
-        return max(candidates, key=lambda p: p.stat().st_size)
+
+        except subprocess.TimeoutExpired:
+            log.warning("ffmpeg_merge_timeout")
+            return None
+        except Exception as exc:
+            log.warning("ffmpeg_merge_error", error=str(exc))
+            return None
+        finally:
+            concat_list.unlink(missing_ok=True)
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _failure(
+        started_at: str,
+        error_message: str,
+        exit_code: int = -1,
+        stderr: str = "",
+        ended_at: str | None = None,
+        output_path: Path | None = None,
+    ) -> RecordingResult:
+        return RecordingResult(
+            success=False,
+            exit_code=exit_code,
+            output_path=output_path,
+            started_at=started_at,
+            ended_at=ended_at or datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            error_message=error_message,
+            stderr_output=stderr,
+        )
 
     def terminate_recording(self, video_id: str) -> bool:
-        """Gracefully terminate an active yt-dlp process.
-
-        Returns True if a process was found and terminated.
-        """
+        """Gracefully terminate an active yt-dlp process."""
         with self._lock:
             proc = self._active_processes.get(video_id)
         if proc is None:
