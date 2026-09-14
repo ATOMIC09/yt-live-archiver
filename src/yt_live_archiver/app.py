@@ -51,8 +51,9 @@ class Application:
     def __init__(self, config: AppConfig) -> None:
         self.config = config
         self._seen_ids: set[str] = set()
+        self._active_channels: set[str] = set()
         self._recorder = Recorder(config)
-        self._monitor = MonitorLoop(config, self._seen_ids)
+        self._monitor = MonitorLoop(config, self._seen_ids, self._active_channels)
         self._active_tasks: set[asyncio.Task] = set()
         self._log = get_logger(__name__)
 
@@ -123,9 +124,6 @@ class Application:
 
                 log.info("orphan_found", channel_id=channel_id, video_id=video_id, files=len(media_files))
 
-                # Prevent the monitor from re-recording this video
-                self._seen_ids.add(video_id)
-
                 channel = channel_by_id.get(channel_id)
 
                 # Merge segments if needed
@@ -158,7 +156,11 @@ class Application:
                     ended_at=now,
                 )
 
-                await run_pipeline(info, result, self.config)
+                success = await run_pipeline(info, result, self.config)
+                if success:
+                    self._seen_ids.add(video_id)
+                else:
+                    log.warning("orphan_processing_failed", video_id=video_id)
 
         if not found_any:
             log.info("orphan_scan_complete_nothing_found")
@@ -168,7 +170,8 @@ class Application:
     # ------------------------------------------------------------------
 
     async def _on_live_detected(self, info: RecordingInfo) -> None:
-        """Callback from MonitorLoop — spawn a background task per stream."""
+        """Callback from MonitorLoop — lock channel and spawn background task."""
+        self._active_channels.add(info.channel_id)
         self._log.info(
             "live_detected_starting_record",
             video_id=info.video_id,
@@ -183,14 +186,18 @@ class Application:
         task.add_done_callback(self._active_tasks.discard)
 
     async def _record_and_process(self, info: RecordingInfo) -> None:
-        """Background task: record then run the pipeline."""
+        """Background task: record, run the pipeline, and release channel lock."""
         try:
             result = await asyncio.get_event_loop().run_in_executor(
                 None, self._recorder.record, info
             )
-            await run_pipeline(info, result, self.config)
+            success = await run_pipeline(info, result, self.config)
+            if success:
+                self._seen_ids.add(info.video_id)
         except Exception as exc:
             self._log.error("record_and_process_crashed", error=str(exc), video_id=info.video_id)
+        finally:
+            self._active_channels.discard(info.channel_id)
 
     def stop(self) -> None:
         self._log.info("shutdown_requested")

@@ -95,11 +95,18 @@ class MonitorLoop:
 
     Uses an in-memory set (*seen_ids*) shared with the Application to
     prevent duplicate recordings within the same process lifetime.
+    Uses (*active_channels*) to skip polling channels that are actively recording.
     """
 
-    def __init__(self, config: AppConfig, seen_ids: set[str]) -> None:
+    def __init__(
+        self,
+        config: AppConfig,
+        seen_ids: set[str],
+        active_channels: set[str] | None = None,
+    ) -> None:
         self.config = config
         self._seen_ids = seen_ids
+        self._active_channels = active_channels if active_channels is not None else set()
         self._stop_event = asyncio.Event()
         self._log = get_logger(__name__)
 
@@ -130,18 +137,22 @@ class MonitorLoop:
 
     async def _check_channel(self, monitor: ChannelMonitor, on_live_detected) -> None:  # noqa: ANN001
         log = get_logger(__name__, channel=monitor.channel.id)
+
+        # Skip channels that are currently recording — like ytarchive
+        if monitor.channel.id in self._active_channels:
+            log.debug("channel_recording_skip_poll")
+            return
+
         try:
             live = await asyncio.get_event_loop().run_in_executor(None, monitor.check_live)
             if live is None:
                 return
 
-            log.info("live_detected", video_id=live.video_id, title=live.title)
-
             if live.video_id in self._seen_ids:
-                log.debug("already_seen", video_id=live.video_id)
+                log.debug("already_completed_skip", video_id=live.video_id)
                 return
 
-            self._seen_ids.add(live.video_id)
+            log.info("live_detected", video_id=live.video_id, title=live.title)
 
             info = RecordingInfo(
                 video_id=live.video_id,

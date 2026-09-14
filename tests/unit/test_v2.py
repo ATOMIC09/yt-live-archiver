@@ -239,3 +239,105 @@ def test_monitor_seen_ids_dedup():
 
     asyncio.run(simulate())
     assert called == [video_id], "Callback should only fire once per video_id"
+
+
+def test_monitor_active_channel_skips_poll():
+    """Active channel in _active_channels is not checked."""
+    import asyncio
+    from yt_live_archiver.monitor import MonitorLoop, ChannelMonitor
+
+    ch = ChannelConfig(id="busy_channel", name="Busy", url="https://youtube.com/@busy/live")
+
+    class FakeConfig:
+        channels = [ch]
+        poll_interval = 30
+
+    seen_ids: set[str] = set()
+    active_channels: set[str] = {"busy_channel"}
+    loop = MonitorLoop(FakeConfig(), seen_ids, active_channels)
+
+    called = []
+
+    async def fake_on_live(info):
+        called.append(info)
+
+    monitor = ChannelMonitor(ch)
+    asyncio.run(loop._check_channel(monitor, fake_on_live))
+    assert called == [], "Should skip channel check when channel is actively recording"
+
+
+# ---------------------------------------------------------------------------
+# Track muxing & segment merge
+# ---------------------------------------------------------------------------
+
+
+def test_merge_or_pick_single_file(tmp_path):
+    from yt_live_archiver.recorder import Recorder
+    from yt_live_archiver.logging_config import get_logger
+
+    single = tmp_path / "recording.mkv"
+    single.write_bytes(b"content")
+
+    rec = Recorder(AppConfig(channels=[]))
+    log = get_logger("test")
+
+    result = rec._merge_or_pick(tmp_path, [single], log)
+    assert result == single
+
+
+def test_merge_or_pick_muxes_separate_tracks(tmp_path, monkeypatch):
+    from yt_live_archiver.recorder import Recorder
+    from yt_live_archiver.logging_config import get_logger
+
+    video = tmp_path / "recording.f137.mkv"
+    audio = tmp_path / "recording.f140.mkv"
+    video.write_bytes(b"video" * 100)
+    audio.write_bytes(b"audio" * 50)
+
+    rec = Recorder(AppConfig(channels=[]))
+    log = get_logger("test")
+
+    # Mock _probe_streams
+    def fake_probe(p: Path):
+        if "f137" in p.name:
+            return True, False  # video only
+        if "f140" in p.name:
+            return False, True  # audio only
+        return False, False
+
+    monkeypatch.setattr(Recorder, "_probe_streams", staticmethod(fake_probe))
+
+    # Mock _mux_tracks to return a fake merged file
+    merged = tmp_path / "merged.mkv"
+    merged.write_bytes(b"merged_content")
+
+    def fake_mux(w_dir, v, a, all_f, l):
+        return merged
+
+    monkeypatch.setattr(Recorder, "_mux_tracks", staticmethod(fake_mux))
+
+    result = rec._merge_or_pick(tmp_path, [video, audio], log)
+    assert result == merged
+
+
+def test_merge_or_pick_picks_complete_file(tmp_path, monkeypatch):
+    from yt_live_archiver.recorder import Recorder
+    from yt_live_archiver.logging_config import get_logger
+
+    complete = tmp_path / "recording.mkv"
+    junk = tmp_path / "recording.part"
+    complete.write_bytes(b"complete" * 100)
+    junk.write_bytes(b"junk")
+
+    rec = Recorder(AppConfig(channels=[]))
+    log = get_logger("test")
+
+    def fake_probe(p: Path):
+        if p.name == "recording.mkv":
+            return True, True  # both video & audio
+        return False, False
+
+    monkeypatch.setattr(Recorder, "_probe_streams", staticmethod(fake_probe))
+
+    result = rec._merge_or_pick(tmp_path, [complete, junk], log)
+    assert result == complete

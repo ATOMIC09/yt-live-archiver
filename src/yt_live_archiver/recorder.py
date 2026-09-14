@@ -11,6 +11,7 @@ Responsibilities:
 
 from __future__ import annotations
 
+import json
 import subprocess
 import threading
 from datetime import UTC, datetime
@@ -200,6 +201,83 @@ class Recorder:
             if p.is_file() and p.suffix.lower() in _MEDIA_EXTENSIONS
         ]
 
+    @staticmethod
+    def _probe_streams(path: Path) -> tuple[bool, bool]:
+        """Return (has_video, has_audio) using ffprobe. (False, False) on failure."""
+        if not path.exists() or path.stat().st_size == 0:
+            return False, False
+        try:
+            proc = subprocess.run(
+                [
+                    "ffprobe",
+                    "-v", "quiet",
+                    "-print_format", "json",
+                    "-show_streams",
+                    str(path),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if proc.returncode != 0:
+                return False, False
+            info = json.loads(proc.stdout)
+            types = {s.get("codec_type") for s in info.get("streams", [])}
+            return ("video" in types, "audio" in types)
+        except Exception:
+            return False, False
+
+    @staticmethod
+    def _mux_tracks(
+        working_dir: Path,
+        video_file: Path,
+        audio_file: Path,
+        all_files: list[Path],
+        log,  # noqa: ANN001
+    ) -> Path | None:
+        """Mux a video-only track and an audio-only track into merged.mkv via ffmpeg.
+
+        Used when yt-dlp was interrupted and left separate video and audio streams
+        without completing its post-processing merge.
+        """
+        merged_path = working_dir / "merged.mkv"
+        cmd = [
+            "ffmpeg",
+            "-i", str(video_file),
+            "-i", str(audio_file),
+            "-c", "copy",
+            "-map", "0:v:0",
+            "-map", "1:a:0",
+            "-y",
+            str(merged_path),
+        ]
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
+            if result.returncode == 0 and merged_path.exists() and merged_path.stat().st_size > 0:
+                # Clean up source files
+                for p in all_files:
+                    try:
+                        p.unlink()
+                    except OSError:
+                        pass
+                log.info(
+                    "tracks_muxed",
+                    video=video_file.name,
+                    audio=audio_file.name,
+                    output=str(merged_path),
+                    size=merged_path.stat().st_size,
+                )
+                return merged_path
+            log.warning(
+                "tracks_mux_failed",
+                returncode=result.returncode,
+                stderr=result.stderr[:300],
+            )
+            return None
+        except Exception as exc:
+            log.warning("tracks_mux_error", error=str(exc))
+            return None
+
     def _merge_or_pick(
         self,
         working_dir: Path,
@@ -208,19 +286,55 @@ class Recorder:
     ) -> Path:
         """Return a single output path from potentially multiple segment files.
 
-        If only one file exists, return it directly.
-        If multiple files exist, attempt an ffmpeg concat merge.
-        Falls back to the largest file on merge failure.
+        1. Probes streams in each file with ffprobe.
+        2. If separate video-only and audio-only files exist (interrupted yt-dlp download),
+           muxes them into merged.mkv.
+        3. If a complete file (both video + audio) exists, uses it.
+        4. If multiple sequential segments exist, concatenates via ffmpeg concat.
+        5. Falls back to largest file.
         """
         if len(files) == 1:
             return files[0]
 
         log.info("multiple_segments_found", count=len(files))
+
+        # Probe streams in each file
+        probed = [(p, self._probe_streams(p)) for p in files]
+        video_only = [p for p, (has_v, has_a) in probed if has_v and not has_a]
+        audio_only = [p for p, (has_v, has_a) in probed if has_a and not has_v]
+        complete = [p for p, (has_v, has_a) in probed if has_v and has_a]
+
+        # Case 1: Separate video and audio tracks from interrupted yt-dlp download
+        if video_only and audio_only:
+            v_file = max(video_only, key=lambda p: p.stat().st_size)
+            a_file = max(audio_only, key=lambda p: p.stat().st_size)
+            log.info("detected_separate_tracks", video=v_file.name, audio=a_file.name)
+            merged = self._mux_tracks(working_dir, v_file, a_file, files, log)
+            if merged is not None:
+                return merged
+
+        # Case 2: One of the files is already a complete recording with video + audio
+        if len(complete) == 1:
+            log.info("found_complete_file", path=str(complete[0]))
+            return complete[0]
+        elif len(complete) > 1:
+            # Multiple complete segments (e.g. stream dropped and reconnected) -> concat
+            merged = self._merge_segments(working_dir, complete, log)
+            if merged is not None:
+                return merged
+
+        # Case 3: Multiple video files without audio or mixed -> concat
+        if len(video_only) > 1:
+            merged = self._merge_segments(working_dir, video_only, log)
+            if merged is not None:
+                return merged
+
+        # Case 4: General concat fallback across all files
         merged = self._merge_segments(working_dir, files, log)
         if merged is not None:
             return merged
 
-        # Merge failed — fall back to largest file
+        # Final fallback — pick largest file
         log.warning("merge_failed_using_largest_file")
         return max(files, key=lambda p: p.stat().st_size)
 

@@ -38,10 +38,11 @@ async def run_pipeline(
     info: RecordingInfo,
     result: RecordingResult,
     config: AppConfig,
-) -> None:
+) -> bool:
     """Run the full post-recording pipeline for one recording.
 
-    This coroutine is safe to run concurrently for multiple recordings.
+    Returns True if the recording was verified and processed successfully,
+    False if recording or verification failed.
     """
     log = get_logger(__name__, video_id=info.video_id, channel=info.channel_id)
     loop = asyncio.get_event_loop()
@@ -54,7 +55,7 @@ async def run_pipeline(
             exit_code=result.exit_code,
         )
         await loop.run_in_executor(None, lambda: _move_to_failed(result.output_path, info, config, log))
-        return
+        return False
 
     # ── Step 1: Rename to final archive filename ───────────────────────────
     log.info("pipeline_starting", source=str(result.output_path))
@@ -63,7 +64,7 @@ async def run_pipeline(
     )
     if final_path is None:
         log.error("finalization_failed")
-        return
+        return False
 
     # ── Step 2 & 3: Media verification ────────────────────────────────────
     log.info("verification_starting", path=str(final_path))
@@ -82,7 +83,7 @@ async def run_pipeline(
         errors = "; ".join(verification.errors)
         log.error("verification_failed", errors=errors)
         await loop.run_in_executor(None, lambda: _move_to_failed(final_path, info, config, log))
-        return
+        return False
 
     meta: MediaMetadata | None = verification.metadata
     log.info(
@@ -101,7 +102,7 @@ async def run_pipeline(
         )
         if drive_file_id is None:
             log.error("upload_failed_local_file_preserved", path=str(final_path))
-            return  # Keep the local file intact
+            return False  # Keep the local file intact
 
     # ── Step 5: Webhook notification ───────────────────────────────────────
     if config.webhook.enabled:
@@ -112,7 +113,7 @@ async def run_pipeline(
         )
         if not webhook_ok:
             log.error("webhook_failed_local_file_preserved", path=str(final_path))
-            return  # Keep the local file intact
+            return False  # Keep the local file intact
 
     # ── Step 6: Delete local file ──────────────────────────────────────────
     if config.google_drive.enabled and drive_file_id:
@@ -125,6 +126,7 @@ async def run_pipeline(
         log.info("local_file_kept", path=str(final_path))
 
     log.info("pipeline_completed", video_id=info.video_id)
+    return True
 
 
 # ---------------------------------------------------------------------------
