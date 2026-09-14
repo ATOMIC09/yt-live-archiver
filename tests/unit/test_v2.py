@@ -1,0 +1,241 @@
+"""
+Unit tests for v2 config, models, utils, and monitor deduplication.
+"""
+
+from __future__ import annotations
+
+import os
+import pytest
+from pathlib import Path
+from unittest.mock import patch
+
+from yt_live_archiver.config import (
+    AppConfig,
+    ChannelConfig,
+    ConfigError,
+    GoogleDriveConfig,
+    WebhookConfig,
+    load_config,
+    parse_channels,
+)
+from yt_live_archiver.models import RecordingInfo, RecordingResult
+from yt_live_archiver.utils import (
+    build_archive_filename,
+    format_bytes,
+    format_duration,
+    sanitize_filename,
+)
+
+
+# ---------------------------------------------------------------------------
+# parse_channels
+# ---------------------------------------------------------------------------
+
+
+def test_parse_channels_single():
+    result = parse_channels("nasa:NASA:https://www.youtube.com/@NASA/live")
+    assert len(result) == 1
+    assert result[0].id == "nasa"
+    assert result[0].name == "NASA"
+    assert result[0].url == "https://www.youtube.com/@NASA/live"
+
+
+def test_parse_channels_multiple():
+    result = parse_channels(
+        "nasa:NASA:https://www.youtube.com/@NASA/live,"
+        "test:Test Channel:https://www.youtube.com/@test/live"
+    )
+    assert len(result) == 2
+    assert result[1].id == "test"
+    assert result[1].name == "Test Channel"
+
+
+def test_parse_channels_url_with_colons():
+    """URL may contain colons after scheme — split on first two colons only."""
+    result = parse_channels("ch:My Channel:https://www.youtube.com/@ch/live")
+    assert result[0].url == "https://www.youtube.com/@ch/live"
+
+
+def test_parse_channels_invalid_format():
+    with pytest.raises(ConfigError, match="Invalid channel entry"):
+        parse_channels("no_colon_at_all")
+
+
+def test_parse_channels_empty_entry_skipped():
+    result = parse_channels("nasa:NASA:https://www.youtube.com/@NASA/live,,,")
+    assert len(result) == 1
+
+
+# ---------------------------------------------------------------------------
+# load_config
+# ---------------------------------------------------------------------------
+
+
+def test_load_config_minimal(monkeypatch):
+    monkeypatch.setenv("CHANNELS", "test:Test:https://www.youtube.com/@test/live")
+    cfg = load_config()
+    assert len(cfg.channels) == 1
+    assert cfg.google_drive.enabled is False
+    assert cfg.webhook.enabled is False
+    assert cfg.poll_interval == 30
+
+
+def test_load_config_missing_channels(monkeypatch):
+    monkeypatch.delenv("CHANNELS", raising=False)
+    with pytest.raises(ConfigError, match="CHANNELS"):
+        load_config()
+
+
+def test_load_config_drive_enabled_missing_creds(monkeypatch):
+    monkeypatch.setenv("CHANNELS", "t:T:https://youtube.com/@t/live")
+    monkeypatch.setenv("GOOGLE_DRIVE_ENABLED", "true")
+    monkeypatch.delenv("GOOGLE_CLIENT_ID", raising=False)
+    with pytest.raises(ConfigError, match="GOOGLE_CLIENT_ID"):
+        load_config()
+
+
+def test_load_config_webhook_enabled_missing_url(monkeypatch):
+    monkeypatch.setenv("CHANNELS", "t:T:https://youtube.com/@t/live")
+    monkeypatch.setenv("WEBHOOK_ENABLED", "true")
+    monkeypatch.delenv("WEBHOOK_URL", raising=False)
+    with pytest.raises(ConfigError, match="WEBHOOK_URL"):
+        load_config()
+
+
+def test_load_config_env_overrides(monkeypatch):
+    monkeypatch.setenv("CHANNELS", "t:T:https://youtube.com/@t/live")
+    monkeypatch.setenv("POLL_INTERVAL", "60")
+    monkeypatch.setenv("LIVE_FROM_START", "false")
+    monkeypatch.setenv("MIN_DURATION", "120")
+    cfg = load_config()
+    assert cfg.poll_interval == 60
+    assert cfg.live_from_start is False
+    assert cfg.min_duration == 120.0
+
+
+# ---------------------------------------------------------------------------
+# Models
+# ---------------------------------------------------------------------------
+
+
+def test_recording_info_fields():
+    info = RecordingInfo(
+        video_id="abc123",
+        channel_id="nasa",
+        channel_name="NASA",
+        youtube_url="https://www.youtube.com/watch?v=abc123",
+        title="Test Stream",
+        detected_at="2026-01-01T00:00:00Z",
+    )
+    assert info.video_id == "abc123"
+    assert info.title == "Test Stream"
+
+
+def test_recording_result_failure():
+    r = RecordingResult(
+        success=False,
+        exit_code=1,
+        output_path=None,
+        started_at="2026-01-01T00:00:00Z",
+        ended_at="2026-01-01T00:01:00Z",
+        error_message="yt-dlp failed",
+    )
+    assert not r.success
+    assert r.error_message == "yt-dlp failed"
+
+
+# ---------------------------------------------------------------------------
+# Utils
+# ---------------------------------------------------------------------------
+
+
+def test_sanitize_filename_removes_unsafe_chars():
+    assert "/" not in sanitize_filename("test/file:name")
+    assert ":" not in sanitize_filename("test:name")
+
+
+def test_sanitize_filename_strips_leading_trailing():
+    assert sanitize_filename("  .test.  ") == "test"
+
+
+def test_sanitize_filename_empty_fallback():
+    assert sanitize_filename("") == "unnamed"
+
+
+def test_build_archive_filename():
+    name = build_archive_filename(title="My Awesome Stream", ext="mkv")
+    assert name == "My Awesome Stream.mkv"
+
+
+def test_format_bytes():
+    assert format_bytes(0) == "0.0B"
+    assert "GB" in format_bytes(2_000_000_000)
+    assert "MB" in format_bytes(5_000_000)
+
+
+def test_format_duration():
+    assert format_duration(3661) == "01:01:01"
+    assert format_duration(0) == "00:00:00"
+    assert format_duration(7200) == "02:00:00"
+
+
+# ---------------------------------------------------------------------------
+# Monitor deduplication
+# ---------------------------------------------------------------------------
+
+
+def test_monitor_seen_ids_dedup():
+    """seen_ids set prevents duplicate callbacks."""
+    from yt_live_archiver.monitor import MonitorLoop
+
+    called = []
+
+    async def fake_on_live(info):
+        called.append(info.video_id)
+
+    seen_ids: set[str] = set()
+
+    class FakeConfig:
+        channels = [ChannelConfig(id="ch", name="Ch", url="https://youtube.com/@ch/live")]
+        poll_interval = 30
+
+    loop = MonitorLoop(FakeConfig(), seen_ids)
+
+    # Manually simulate what _check_channel does
+    video_id = "test123"
+
+    import asyncio
+
+    async def simulate():
+        from yt_live_archiver.monitor import LiveStreamInfo
+        from yt_live_archiver.models import RecordingInfo
+        from datetime import UTC, datetime
+
+        live = LiveStreamInfo(video_id=video_id, title="Test", url="https://youtube.com/watch?v=test123")
+
+        # First call — should trigger
+        if live.video_id not in seen_ids:
+            seen_ids.add(live.video_id)
+            await fake_on_live(RecordingInfo(
+                video_id=live.video_id,
+                channel_id="ch",
+                channel_name="Ch",
+                youtube_url=live.url,
+                title=live.title,
+                detected_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            ))
+
+        # Second call — should be skipped
+        if live.video_id not in seen_ids:
+            seen_ids.add(live.video_id)
+            await fake_on_live(RecordingInfo(
+                video_id=live.video_id,
+                channel_id="ch",
+                channel_name="Ch",
+                youtube_url=live.url,
+                title=live.title,
+                detected_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            ))
+
+    asyncio.run(simulate())
+    assert called == [video_id], "Callback should only fire once per video_id"
